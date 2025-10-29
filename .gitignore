@@ -5,3 +5,5 @@ node_modules
 packages/desktop/node_modules
 packages/shared/node_modules
 /packages/mobile/ios/Pods
+package-lock.json
+yarn.lock

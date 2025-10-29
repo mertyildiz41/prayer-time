@@ -16,27 +16,33 @@
   },
   "dependencies": {
     "@prayer-time/shared": "*",
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-native-community/async-storage": "^1.12.1",
     "@react-navigation/native": "^6.1.9",
-  "@react-navigation/native-stack": "^6.9.17",
-  "react": "^18.2.0",
-  "react-native": "^0.72.0",
+    "@react-navigation/native-stack": "^6.9.17",
+    "country-state-city": "^3.2.1",
+    "react": "^18.2.0",
+    "react-native": "^0.72.0",
     "react-native-geolocation-service": "^5.3.1",
-  "@react-native-community/async-storage": "^1.12.1",
-  "react-native-linear-gradient": "^2.8.3",
-  "react-native-notifications": "^5.1.0",
-  "react-native-safe-area-context": "^4.7.4",
-  "react-native-screens": "^3.29.0",
-  "react-native-vector-icons": "^10.1.0"
+    "react-native-linear-gradient": "^2.8.3",
+    "react-native-notifications": "^5.1.0",
+    "react-native-permissions": "^5.4.3",
+    "react-native-safe-area-context": "^4.7.4",
+    "react-native-screens": "^3.29.0",
+    "react-native-swiper": "^1.6.0",
+    "react-native-vector-icons": "^10.1.0"
   },
   "devDependencies": {
     "@react-native-community/cli": "^11.2.0",
     "@react-native-community/cli-platform-android": "^11.2.0",
     "@react-native-community/cli-platform-ios": "^11.2.0",
+    "@react-native/metro-config": "^0.72.11",
+    "@types/jest": "^29.5.0",
     "@types/react": "^18.2.0",
     "@types/react-native": "^0.72.0",
-    "@react-native/metro-config": "^0.72.11",
-    "typescript": "^5.2.0",
+    "@types/react-native-permissions": "^1.1.1",
+    "@types/react-native-swiper": "^1.5.10",
     "jest": "^29.7.0",
-    "@types/jest": "^29.5.0"
+    "typescript": "^5.2.0"
   }
 }
