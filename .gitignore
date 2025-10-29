@@ -1,0 +1,7 @@
+/node_modules
+/packages/desktop/node_modules
+/packages/shared/node_modules
+node_modules
+packages/desktop/node_modules
+packages/shared/node_modules
+/packages/mobile/ios/Pods

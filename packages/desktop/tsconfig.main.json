@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "types": ["node", "electron"]
+  },
+  "include": [
+    "src/main.ts",
+    "src/preload.ts",
+    "src/menu-preload.ts",
+    "src/MenuBarManager.ts"
+  ],
+  "exclude": ["node_modules"]
+}

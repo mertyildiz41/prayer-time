@@ -1,0 +1,82 @@
+{
+  "name": "@prayer-time/desktop",
+  "version": "1.0.0",
+  "description": "Prayer Time Desktop App - Electron",
+  "license": "Apache-2.0",
+  "private": true,
+  "main": "dist/main.js",
+  "homepage": "./",
+  "scripts": {
+  "prestart": "yarn --cwd ../shared build",
+    "build:main": "tsc -p tsconfig.main.json",
+    "start": "react-scripts start",
+    "prebuild": "yarn build:main",
+    "build": "react-scripts build && electron-builder",
+    "pack": "yarn build:main && electron-builder --dir",
+    "dist": "yarn build:main && electron-builder",
+    "eject": "react-scripts eject",
+    "dev": "concurrently \"cross-env BROWSER=none yarn start\" \"wait-on http://localhost:3000 && yarn build:main && electron .\"",
+    "test": "react-scripts test"
+  },
+  "dependencies": {
+    "@prayer-time/shared": "*",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.16.0",
+    "axios": "^1.6.0",
+    "date-fns": "^2.30.0"
+  },
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.0",
+    "react-scripts": "5.0.1",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "typescript": "^5.2.0",
+    "concurrently": "^8.2.0",
+    "cross-env": "^7.0.3",
+    "wait-on": "^7.0.0"
+  },
+  "build": {
+    "appId": "com.prayertime.app",
+    "productName": "Prayer Time",
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "build/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
