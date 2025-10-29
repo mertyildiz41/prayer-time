@@ -58,6 +58,7 @@ export default function App() {
           <Stack.Screen
             name="PrayerTime"
             component={PrayerTimeScreen}
+            initialParams={{ location }}
             options={{ headerShown: false }}
           />
         )}

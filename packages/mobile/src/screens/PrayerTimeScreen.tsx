@@ -12,7 +12,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { DailyPrayerTimes, PrayerTime, PrayerTimeCalculator } from '@prayer-time/shared';
 
-interface PrayerTimeScreenProps {}
+interface PrayerTimeScreenProps {
+  route: {
+    params: {
+      location: {
+        latitude: number;
+        longitude: number;
+        city: string;
+        country: string;
+        timezone: string;
+      };
+    };
+  };
+}
 
 const formatCountdown = (ms: number): string => {
   const isNegative = ms < 0;
@@ -58,7 +70,8 @@ const NAV_ITEMS = [
   { key: 'settings', label: 'Settings', icon: 'settings-outline' },
 ];
 
-const PrayerTimeScreen: React.FC<PrayerTimeScreenProps> = () => {
+const PrayerTimeScreen: React.FC<PrayerTimeScreenProps> = ({ route }) => {
+  const { location } = route.params;
   const [prayerTimes, setPrayerTimes] = useState<DailyPrayerTimes | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,27 +80,20 @@ const PrayerTimeScreen: React.FC<PrayerTimeScreenProps> = () => {
   const [locationLabel, setLocationLabel] = useState<string>('');
 
   useEffect(() => {
-    loadPrayerTimes();
-  }, []);
+    if (location) {
+      loadPrayerTimes();
+    }
+  }, [location]);
 
   const loadPrayerTimes = async () => {
     try {
       setLoading(true);
-      // In a real app, get location from geolocation service
-      const mockLocation = {
-        latitude: 31.5454,
-        longitude: 74.3571,
-        city: 'Lahore',
-        country: 'Pakistan',
-        timezone: 'Asia/Karachi',
-      };
-
       const times = PrayerTimeCalculator.calculatePrayerTimes(
         new Date(),
-        mockLocation,
-        'Karachi'
+        location,
+        'Karachi' // This should be dynamic based on location
       );
-      setLocationLabel(`${mockLocation.city}, ${mockLocation.country}`);
+      setLocationLabel(`${location.city}, ${location.country}`);
       setPrayerTimes(times);
       setNextPrayer(PrayerTimeCalculator.getNextPrayerTime(times.prayers));
       setError(null);
