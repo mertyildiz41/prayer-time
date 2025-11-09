@@ -272,4 +272,32 @@ export class PrayerTimeCalculator {
 
     return occurrence.getTime() - reference.getTime();
   }
+
+  /**
+   * Calculate Qibla direction
+   */
+  static calculateQiblaDirection(location: Location): number {
+    const kaaba = {
+      latitude: 21.4225,
+      longitude: 39.8262,
+    };
+
+    const toRadians = (degrees: number) => degrees * (Math.PI / 180);
+
+    const lat1 = toRadians(location.latitude);
+    const lon1 = toRadians(location.longitude);
+    const lat2 = toRadians(kaaba.latitude);
+    const lon2 = toRadians(kaaba.longitude);
+
+    const lonDiff = lon2 - lon1;
+
+    const y = Math.sin(lonDiff);
+    const x = Math.cos(lat1) * Math.tan(lat2) - Math.sin(lat1) * Math.cos(lonDiff);
+
+    let angle = Math.atan2(y, x);
+    angle = (angle * 180) / Math.PI;
+    angle = (angle + 360) % 360;
+
+    return angle;
+  }
 }

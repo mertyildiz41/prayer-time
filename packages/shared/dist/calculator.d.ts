@@ -21,4 +21,8 @@ export declare class PrayerTimeCalculator {
      */
     static getTimeUntilPrayer(prayer: PrayerTime, reference?: Date): number;
     static getTimeUntilNextPrayer(prayerTime: string, reference?: Date): number;
+    /**
+     * Calculate Qibla direction
+     */
+    static calculateQiblaDirection(location: Location): number;
 }

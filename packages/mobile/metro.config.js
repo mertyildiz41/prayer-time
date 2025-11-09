@@ -1,18 +1,31 @@
-const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
 const path = require('path');
+const fs = require('fs');
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 
-/**
- * Metro configuration
- * https://facebook.github.io/metro/docs/configuration
- *
- * @type {import('metro-config').MetroConfig}
- */
+const projectRoot = __dirname;
+const workspaceRoot = path.resolve(projectRoot, '../..');
+const projectNodeModules = path.join(projectRoot, 'node_modules');
+const workspaceNodeModules = fs.realpathSync(path.join(workspaceRoot, 'node_modules'));
+
+const resolveFromWorkspace = (moduleName) =>
+  // Resolve to the real (non-symlinked) node_modules path so Metro keeps a single React instance alive.
+  path.join(workspaceNodeModules, moduleName);
+
 const config = {
-  watchFolders: [path.resolve(__dirname, '../..')],
+  projectRoot,
+  watchFolders: [workspaceRoot],
   resolver: {
+    nodeModulesPaths: [projectNodeModules, workspaceNodeModules],
+    extraNodeModules: {
+      react: resolveFromWorkspace('react'),
+      'react/jsx-runtime': resolveFromWorkspace('react/jsx-runtime'),
+      'react-dom': resolveFromWorkspace('react-dom'),
+      'react-native': resolveFromWorkspace('react-native'),
+    },
     unstable_enableSymlinks: true,
   },
 };
 
-module.exports = mergeConfig(getDefaultConfig(__dirname), config);
+console.log('Metro config:', JSON.stringify(config, null, 2));
 
+module.exports = mergeConfig(getDefaultConfig(projectRoot), config);
