@@ -34,7 +34,9 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
+	<string>PrayerTime uses your location to calculate accurate prayer schedules and show the Qibla direction.</string>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>PrayerTime sends reminders for upcoming prayers so you never miss a notification.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIAppFonts</key>

@@ -153,7 +153,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
       imageStyle={styles.backgroundImage}
     >
       <View style={styles.overlay} />
-      <SafeAreaView style={styles.safeArea}>
+      <View style={styles.safeArea}>
         <ScrollView
           style={styles.container}
           contentContainerStyle={styles.content}
@@ -220,7 +220,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
             })}
           </View>
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </ImageBackground>
   );
 }

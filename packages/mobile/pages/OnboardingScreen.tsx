@@ -38,6 +38,7 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
         result = await request('android.permission.POST_NOTIFICATIONS' as any);
       }
 
+      onComplete();
       if (result === RESULTS.GRANTED) {
           console.log('Notification permission granted');
       } else {
@@ -45,8 +46,6 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
       }
     } catch (error) {
         console.error("Failed to request notification permission", error);
-    } finally {
-        onComplete();
     }
   };
 

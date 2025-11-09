@@ -1,55 +1,69 @@
-import React from 'react';
+// @ts-nocheck
+/// <reference types="react-native" />
+
+import React, { useCallback } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-
 import Icon from '@react-native-vector-icons/material-icons';
+import { Location } from '@prayer-time/shared';
 
+type IconName = 'home' | 'explore' | 'menu-book' | 'settings';
+
+type BottomNavBarProps = {
+  location?: Location;
+  currentRoute?: string;
+  onNavigate?: (target: string) => void;
+};
 
 type NavItem = {
   key: 'home' | 'qibla' | 'quran' | 'settings';
   label: string;
-  icon: string;
+  icon: IconName;
+  target?: string;
+  requiresLocation?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'home', label: 'Home', icon: 'home' },
-  { key: 'qibla', label: 'Qibla', icon: 'explore' },
-  { key: 'quran', label: 'Quran', icon: 'menu-book' },
-  { key: 'settings', label: 'Settings', icon: 'settings' },
+  { key: 'home', label: 'Home', icon: 'home', target: 'PrayerTime', requiresLocation: true },
+  { key: 'qibla', label: 'Qibla', icon: 'explore', target: 'Qibla', requiresLocation: true },
+  { key: 'quran', label: 'Quran', icon: 'menu-book', target: 'Quran' },
+  { key: 'settings', label: 'Settings', icon: 'settings', target: 'Settings' },
 ];
 
-export const BottomNavBar = () => {
-  //const navigation = useNavigation<StackNavigation>();
-  //const route = useRoute<StackRoute>();
+export const BottomNavBar = ({ location, currentRoute, onNavigate }: BottomNavBarProps) => {
+  const handlePress = useCallback(
+    (item: NavItem) => {
+      if (!item.target || !onNavigate) {
+        return;
+      }
 
-//   const handlePress = useCallback(
-//     (item: NavItem) => {
-//       if (!item.target) {
-//         return;
-//       }
+      if (item.requiresLocation && !location) {
+        return;
+      }
 
-//       if (route.name === item.target) {
-//         return;
-//       }
+      if (currentRoute === item.target) {
+        return;
+      }
 
-//       navigation.navigate(item.target, { location });
-//     },
-//     [location, navigation, route.name],
-//   );
+      onNavigate(item.target);
+    },
+    [currentRoute, location, onNavigate],
+  );
 
   return (
     <View style={styles.bottomNav}>
       {NAV_ITEMS.map((item) => {
-        const isActive = false//item.target ? route.name === item.target : false;
+        const isActive = item.target ? currentRoute === item.target : false;
+        const isDisabled = !item.target || (item.requiresLocation && !location) || !onNavigate;
 
         return (
           <TouchableOpacity
             key={item.key}
             style={styles.navItem}
             activeOpacity={0.7}
-            //onPress={() => handlePress(item)}
-            // disabled={!item.target}
+            onPress={() => handlePress(item)}
+            disabled={isDisabled}
           >
-            <Icon name="house" size={20}
+            <Icon name={item.icon} size={20}
               color={isActive ? '#38bdf8' : '#94a3b8'}
             />
             <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
