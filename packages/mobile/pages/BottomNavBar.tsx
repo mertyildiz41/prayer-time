@@ -6,6 +6,8 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from '@react-native-vector-icons/material-icons';
 import { Location } from '@prayer-time/shared';
 
+import { useTranslation } from '../i18n';
+
 type IconName = 'home' | 'explore' | 'menu-book' | 'settings';
 
 type BottomNavBarProps = {
@@ -16,20 +18,22 @@ type BottomNavBarProps = {
 
 type NavItem = {
   key: 'home' | 'qibla' | 'quran' | 'settings';
-  label: string;
+  labelKey: 'navigation.home' | 'navigation.qibla' | 'navigation.quran' | 'navigation.settings';
   icon: IconName;
   target?: string;
   requiresLocation?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
-  { key: 'home', label: 'Home', icon: 'home', target: 'PrayerTime', requiresLocation: true },
-  { key: 'qibla', label: 'Qibla', icon: 'explore', target: 'Qibla', requiresLocation: true },
-  { key: 'quran', label: 'Quran', icon: 'menu-book', target: 'Quran' },
-  { key: 'settings', label: 'Settings', icon: 'settings', target: 'Settings' },
+  { key: 'home', labelKey: 'navigation.home', icon: 'home', target: 'PrayerTime', requiresLocation: true },
+  { key: 'qibla', labelKey: 'navigation.qibla', icon: 'explore', target: 'Qibla', requiresLocation: true },
+  { key: 'quran', labelKey: 'navigation.quran', icon: 'menu-book', target: 'Quran' },
+  { key: 'settings', labelKey: 'navigation.settings', icon: 'settings', target: 'Settings' },
 ];
 
 export const BottomNavBar = ({ location, currentRoute, onNavigate }: BottomNavBarProps) => {
+  const { t } = useTranslation();
+
   const handlePress = useCallback(
     (item: NavItem) => {
       if (!item.target || !onNavigate) {
@@ -67,7 +71,7 @@ export const BottomNavBar = ({ location, currentRoute, onNavigate }: BottomNavBa
               color={isActive ? '#38bdf8' : '#94a3b8'}
             />
             <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
-              {item.label}
+              {t(item.labelKey)}
             </Text>
           </TouchableOpacity>
         );

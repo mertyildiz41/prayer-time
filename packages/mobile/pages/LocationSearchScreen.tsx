@@ -15,6 +15,8 @@ import Icon from '@react-native-vector-icons/material-icons';
 import { Country, State, City, ICountry, IState, ICity } from 'country-state-city';
 import { Location } from '@prayer-time/shared';
 
+import { useTranslation } from '../i18n';
+
 type LocationSearchScreenProps = {
   onLocationSelect: (location: Location) => void;
   initialCountries?: ICountry[];
@@ -29,8 +31,9 @@ const LocationSearchScreen = ({ onLocationSelect, initialCountries = [] }: Locat
   const [selectedCountry, setSelectedCountry] = useState<ICountry | null>(null);
   const [selectedState, setSelectedState] = useState<IState | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(initialCountries.length === 0);
+  const { t } = useTranslation();
 
   useEffect(() => {
     let isCancelled = false;
@@ -56,7 +59,7 @@ const LocationSearchScreen = ({ onLocationSelect, initialCountries = [] }: Locat
 
       setLoading(true);
       try {
-        setError(null);
+        setErrorKey(null);
 
         if (step === 'country') {
           const result = countries.length > 0 ? countries : Country.getAllCountries();
@@ -77,7 +80,7 @@ const LocationSearchScreen = ({ onLocationSelect, initialCountries = [] }: Locat
       } catch (err) {
         if (!isCancelled) {
           console.error('Failed to load location data', err);
-          setError('Failed to load data. Please try again.');
+          setErrorKey('location.error.load');
         }
       } finally {
         if (!isCancelled) {
@@ -129,11 +132,11 @@ const LocationSearchScreen = ({ onLocationSelect, initialCountries = [] }: Locat
     const longitude = Number.parseFloat(longitudeValue);
 
     if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
-      setError('Selected city is missing coordinate data.');
+      setErrorKey('location.error.coordinates');
       return;
     }
 
-    setError(null);
+    setErrorKey(null);
 
     const location: Location = {
       city: city.name,
@@ -172,15 +175,15 @@ const LocationSearchScreen = ({ onLocationSelect, initialCountries = [] }: Locat
 
   const renderHeader = () => {
     if (step === 'country') {
-      return { title: 'Select a Country', subtitle: 'Please select your country.' };
+      return { title: t('location.title.country'), subtitle: t('location.subtitle.country') };
     }
     if (step === 'state') {
-      return { title: 'Select a State/Region', subtitle: `You selected ${selectedCountry?.name}.` };
+      return { title: t('location.title.state'), subtitle: t('location.subtitle.state', { country: selectedCountry?.name ?? '' }) };
     }
     if (step === 'city') {
-      return { title: 'Select a City', subtitle: `You selected ${selectedState?.name}.` };
+      return { title: t('location.title.city'), subtitle: t('location.subtitle.city', { state: selectedState?.name ?? '' }) };
     }
-    return { title: 'Where are you located?', subtitle: 'Please enter your city to get accurate prayer times.' };
+    return { title: t('location.title.country'), subtitle: t('location.subtitle.country') };
   };
 
   const { title, subtitle } = renderHeader();
@@ -190,7 +193,7 @@ const LocationSearchScreen = ({ onLocationSelect, initialCountries = [] }: Locat
       {initializing && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#3b82f6" />
-          <Text style={styles.loadingText}>Loading locations…</Text>
+          <Text style={styles.loadingText}>{t('location.loading')}</Text>
         </View>
       )}
       <View
@@ -209,7 +212,7 @@ const LocationSearchScreen = ({ onLocationSelect, initialCountries = [] }: Locat
           <Icon name="search" size={20} color="#94a3b8" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder={`Search for a ${step}...`}
+            placeholder={t('location.searchPlaceholder', { step: t(`location.step.${step}`) })}
             placeholderTextColor="#94a3b8"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -219,7 +222,7 @@ const LocationSearchScreen = ({ onLocationSelect, initialCountries = [] }: Locat
         {loading && !initializing && (
           <ActivityIndicator size="large" color="#3b82f6" style={styles.inlineLoader} />
         )}
-        {error && <Text style={styles.errorText}>{error}</Text>}
+        {errorKey && <Text style={styles.errorText}>{t(errorKey)}</Text>}
         {!loading && !error && (
           <>
             {step === 'country' && (

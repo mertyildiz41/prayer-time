@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
       android:name=".MainApplication"
@@ -23,5 +25,24 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
       </activity>
+      <receiver
+        android:name="com.dieam.reactnativepushnotification.modules.PushNotificationPublisher"
+        android:exported="false"
+      />
+      <receiver
+        android:name="com.dieam.reactnativepushnotification.modules.PushNotificationBootEventReceiver"
+        android:enabled="true"
+        android:exported="true">
+        <intent-filter>
+          <action android:name="android.intent.action.BOOT_COMPLETED" />
+          <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        </intent-filter>
+      </receiver>
+      <service
+        android:name="com.dieam.reactnativepushnotification.modules.PushNotificationJobIntentService"
+        android:permission="android.permission.BIND_JOB_SERVICE"
+        android:exported="false"
+      />
     </application>
 </manifest>

@@ -1,4 +1,6 @@
-import React, { useCallback, useEffect, useState, type ComponentProps } from 'react';
+// @ts-nocheck
+
+import React, { useCallback, useEffect, useRef, useState, type ComponentProps } from 'react';
 import {
   View,
   Text,
@@ -8,10 +10,14 @@ import {
   TouchableOpacity,
   ImageBackground,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
+import { useFocusEffect } from '@react-navigation/native';
 import Icon from '@react-native-vector-icons/material-icons';
 import { DailyPrayerTimes, Location, PrayerTime, PrayerTimeCalculator } from '@prayer-time/shared';
+
+import { useLanguage, useTranslation } from '../i18n';
+import type { TranslationKey } from '../i18n/translations';
+import { scheduleDailyPrayerNotifications } from '../notifications/notificationService';
+import { settingsStorage } from '../storage/settingsStorage';
 
 type MaterialIconName = ComponentProps<typeof Icon>['name'];
 
@@ -59,9 +65,30 @@ const PRAYER_ICONS: Partial<Record<PrayerTime['name'], MaterialIconName>> = {
 function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
   const [prayerTimes, setPrayerTimes] = useState<DailyPrayerTimes | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<TranslationKey | null>(null);
   const [nextPrayer, setNextPrayer] = useState<PrayerTime | null>(null);
   const [countdown, setCountdown] = useState('00:00:00');
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
+    () => settingsStorage.getNotificationsEnabled(),
+  );
+  const lastScheduleKeyRef = useRef<string | null>(null);
+
+  const translatePrayerName = useCallback(
+    (name: PrayerTime['name']) => {
+      const key = `prayer.name.${name.toLowerCase()}` as TranslationKey;
+      const translated = t(key);
+      return translated === key ? name : translated;
+    },
+    [t],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      setNotificationsEnabled(settingsStorage.getNotificationsEnabled());
+    }, []),
+  );
 
   const loadPrayerTimes = useCallback(async () => {
     try {
@@ -73,10 +100,10 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
       );
       setPrayerTimes(times);
       setNextPrayer(PrayerTimeCalculator.getNextPrayerTime(times.prayers));
-      setError(null);
+      setErrorKey(null);
     } catch (err) {
       console.error(err);
-      setError('Failed to load prayer times');
+      setErrorKey('prayer.error.load');
     } finally {
       setLoading(false);
     }
@@ -111,6 +138,40 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
     return () => clearInterval(interval);
   }, [prayerTimes]);
 
+  useEffect(() => {
+    if (!prayerTimes || !notificationsEnabled) {
+      return;
+    }
+
+  const scheduleKey = `${prayerTimes.date}-${language}-${location.latitude}-${location.longitude}`;
+    if (lastScheduleKeyRef.current === scheduleKey) {
+      return;
+    }
+
+    const scheduleNotifications = async () => {
+      const success = await scheduleDailyPrayerNotifications({
+        prayers: prayerTimes.prayers,
+        dateKey: scheduleKey,
+        translator: t,
+        translatePrayerName,
+      });
+
+      if (success) {
+        lastScheduleKeyRef.current = scheduleKey;
+      }
+    };
+
+    scheduleNotifications().catch((error) => {
+      console.error('Failed to schedule prayer notifications', error);
+    });
+  }, [prayerTimes, notificationsEnabled, t, translatePrayerName, language]);
+
+  useEffect(() => {
+    if (!notificationsEnabled) {
+      lastScheduleKeyRef.current = null;
+    }
+  }, [notificationsEnabled]);
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -119,10 +180,10 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
     );
   }
 
-  if (error) {
+  if (errorKey) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.errorText}>{error}</Text>
+        <Text style={styles.errorText}>{t(errorKey)}</Text>
       </View>
     );
   }
@@ -130,7 +191,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
   if (!prayerTimes) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.errorText}>No prayer times available</Text>
+        <Text style={styles.errorText}>{t('prayer.error.empty')}</Text>
       </View>
     );
   }
@@ -161,7 +222,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
         >
           <View style={styles.headerRow}>
             <View>
-              <Text style={styles.screenTitle}>Prayer Times</Text>
+              <Text style={styles.screenTitle}>{t('prayer.title')}</Text>
               <Text style={styles.hijriText}>{prayerTimes.hijriDate ?? prayerTimes.date}</Text>
             </View>
             <TouchableOpacity style={styles.locationButton} activeOpacity={0.75}>
@@ -171,11 +232,11 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
 
           {nextPrayer ? (
             <View style={styles.largeCard}>
-              <Text style={styles.largeCardLabel}>{nextPrayer.name}</Text>
+              <Text style={styles.largeCardLabel}>{translatePrayerName(nextPrayer.name)}</Text>
               <Text style={styles.largeCardTime}>{formatTo12Hour(nextPrayer.time)}</Text>
 
               <View style={styles.countdownSection}>
-                <Text style={styles.countdownLabel}>NEXT PRAYER IN</Text>
+                <Text style={styles.countdownLabel}>{t('prayer.nextPrayerIn')}</Text>
                 <Text style={styles.countdownTime}>{countdown}</Text>
               </View>
             </View>
@@ -204,7 +265,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
                         isNextPrayer && styles.prayerNameActive,
                       ]}
                     >
-                      {prayer.name}
+                      {translatePrayerName(prayer.name)}
                     </Text>
                   </View>
                   <Text

@@ -17,6 +17,9 @@ import OnboardingScreen from './pages/OnboardingScreen';
 import QuranScreen from './pages/QuranScreen';
 import SettingsScreen from './pages/SettingsScreen';
 
+import { I18nProvider } from './i18n';
+import { initializeNotifications } from './notifications/notificationService';
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 type LocationParam = RootStackParamList['Qibla']['location'];
@@ -43,6 +46,10 @@ function App() {
     }
 
     setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    initializeNotifications();
   }, []);
 
   const handleLocationSelect = useCallback(
@@ -132,61 +139,63 @@ function App() {
   }
   
   return (
-    <SafeAreaProvider style={{ flex: 1, backgroundColor: '#0a0e1a' }}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: 'rgba(10, 14, 26, 0.85)' }}>
-        <NavigationContainer
-          ref={navigationRef}
-          onReady={updateCurrentRoute}
-          onStateChange={updateCurrentRoute}
-        >
-          <Stack.Navigator
-            initialRouteName={location ? 'PrayerTime' : 'Onboarding'}
-            screenOptions={{ animation: transitionAnimation }}
+    <I18nProvider>
+      <SafeAreaProvider style={{ flex: 1, backgroundColor: '#0a0e1a' }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: 'rgba(10, 14, 26, 0.85)' }}>
+          <NavigationContainer
+            ref={navigationRef}
+            onReady={updateCurrentRoute}
+            onStateChange={updateCurrentRoute}
           >
-            <Stack.Screen name="PrayerTime" options={{ headerShown: false }}>
-              {() => {
-                if (!location) {
-                  return <View style={{ flex: 1 }} />;
-                }
+            <Stack.Navigator
+              initialRouteName={location ? 'PrayerTime' : 'Onboarding'}
+              screenOptions={{ animation: transitionAnimation }}
+            >
+              <Stack.Screen name="PrayerTime" options={{ headerShown: false }}>
+                {() => {
+                  if (!location) {
+                    return <View style={{ flex: 1 }} />;
+                  }
 
-                return (
-                  <View style={{ flex: 1 }}>
-                    <PrayerTimeScreen location={location} />
-                  </View>
-                );
-              }}
-            </Stack.Screen>
-            <Stack.Screen name="Qibla" component={QiblaScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Onboarding" options={{ headerShown: false }}>
-              {() => {
-                return (
-                  <OnboardingScreen onComplete={handleOnBoardingComplete} />
-                );
-              }}
-            </Stack.Screen>
-            <Stack.Screen name="LocationSearch" options={{ headerShown: false }}>
-              {() => {
-                return (
-                  <LocationSearchScreen
-                    onLocationSelect={handleLocationSelect}
-                    initialCountries={preloadedCountries}
-                  />
-                )
-              }}
-            </Stack.Screen>
-            <Stack.Screen name="Quran" component={QuranScreen} options={{ headerShown: false }} />
-            <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
-          </Stack.Navigator>
-        </NavigationContainer>
-        {location && currentRouteName && currentRouteName !== 'LocationSearch' && (
-          <BottomNavBar
-            location={location}
-            currentRoute={currentRouteName}
-            onNavigate={handleNavBarNavigate}
-          />
-        )}
-      </SafeAreaView>
-    </SafeAreaProvider>
+                  return (
+                    <View style={{ flex: 1 }}>
+                      <PrayerTimeScreen location={location} />
+                    </View>
+                  );
+                }}
+              </Stack.Screen>
+              <Stack.Screen name="Qibla" component={QiblaScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="Onboarding" options={{ headerShown: false }}>
+                {() => {
+                  return (
+                    <OnboardingScreen onComplete={handleOnBoardingComplete} />
+                  );
+                }}
+              </Stack.Screen>
+              <Stack.Screen name="LocationSearch" options={{ headerShown: false }}>
+                {() => {
+                  return (
+                    <LocationSearchScreen
+                      onLocationSelect={handleLocationSelect}
+                      initialCountries={preloadedCountries}
+                    />
+                  )
+                }}
+              </Stack.Screen>
+              <Stack.Screen name="Quran" component={QuranScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
+            </Stack.Navigator>
+          </NavigationContainer>
+          {location && currentRouteName && currentRouteName !== 'LocationSearch' && (
+            <BottomNavBar
+              location={location}
+              currentRoute={currentRouteName}
+              onNavigate={handleNavBarNavigate}
+            />
+          )}
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </I18nProvider>
   );
 }
 

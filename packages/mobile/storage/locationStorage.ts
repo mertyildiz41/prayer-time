@@ -1,9 +1,8 @@
 import { Location } from '@prayer-time/shared';
-import { createMMKV } from 'react-native-mmkv';
+
+import { storage } from './baseStorage';
 
 const LOCATION_KEY = 'userLocation';
-
-const storage = createMMKV({ id: 'prayer-time-storage' });
 
 type StoredLocation = Location;
 

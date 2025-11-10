@@ -28,6 +28,38 @@
         }
       }
     },
+    "@react-native-community/push-notification-ios": {
+      "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/push-notification-ios",
+      "name": "@react-native-community/push-notification-ios",
+      "platforms": {
+        "ios": {
+          "podspecPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/push-notification-ios/RNCPushNotificationIOS.podspec",
+          "version": "1.11.0",
+          "configurations": [],
+          "scriptPhases": []
+        },
+        "android": null
+      }
+    },
+    "react-native-push-notification": {
+      "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-push-notification",
+      "name": "react-native-push-notification",
+      "platforms": {
+        "ios": null,
+        "android": {
+          "sourceDir": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-push-notification/android",
+          "packageImportPath": "import com.dieam.reactnativepushnotification.ReactNativePushNotificationPackage;",
+          "packageInstance": "new ReactNativePushNotificationPackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-push-notification/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
     "react-native-compass-heading": {
       "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-compass-heading",
       "name": "react-native-compass-heading",

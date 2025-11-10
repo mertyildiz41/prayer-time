@@ -3,6 +3,8 @@
 import React from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { useTranslation } from '../i18n';
+
 const SURAH_LIST = [
   { number: 1, name: "Al-Fatiha", revelation: "Meccan", verses: 7 },
   { number: 2, name: "Al-Baqarah", revelation: "Medinan", verses: 286 },
@@ -15,6 +17,7 @@ const SURAH_LIST = [
 ];
 
 const QuranScreen = () => {
+  const { t } = useTranslation();
   const renderItem = ({ item }: { item: (typeof SURAH_LIST)[number] }) => (
     <TouchableOpacity activeOpacity={0.8} style={styles.card}>
       <View style={styles.badge}>
@@ -23,18 +26,21 @@ const QuranScreen = () => {
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle}>{item.name}</Text>
         <Text style={styles.cardSubtitle}>
-          {item.revelation} • {item.verses} verses
+          {t('quran.cardSubtitle', {
+            revelation: t(`quran.revelation.${item.revelation.toLowerCase()}`),
+            count: item.verses,
+          })}
         </Text>
       </View>
-      <Text style={styles.cardAction}>Read</Text>
+      <Text style={styles.cardAction}>{t('quran.readAction')}</Text>
     </TouchableOpacity>
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Qur'an Explorer</Text>
+      <Text style={styles.title}>{t('quran.title')}</Text>
       <Text style={styles.subtitle}>
-        Browse popular surahs and continue your daily recitation routine. More content is coming soon.
+        {t('quran.subtitle')}
       </Text>
       <FlatList
         data={SURAH_LIST}

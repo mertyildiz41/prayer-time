@@ -1,10 +1,17 @@
+// @ts-nocheck
+
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { request, requestNotifications, PERMISSIONS, RESULTS } from 'react-native-permissions';
+import { request, PERMISSIONS, RESULTS } from 'react-native-permissions';
+
+import { useTranslation } from '../i18n';
+import { ensureNotificationPermission } from '../notifications/notificationService';
+import { settingsStorage } from '../storage/settingsStorage';
 
 const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
   const [currentStep, setCurrentStep] = useState(0);
+  const { t } = useTranslation();
 
   const goToNotificationStep = () => setCurrentStep(1);
 
@@ -30,22 +37,18 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
 
   const handleEnableNotifications = async () => {
     try {
-      let result;
-      if (Platform.OS === 'ios') {
-        const { status } = await requestNotifications(['alert', 'badge', 'sound']);
-        result = status;
-      } else { // Android
-        result = await request('android.permission.POST_NOTIFICATIONS' as any);
-      }
+      const granted = await ensureNotificationPermission();
+      settingsStorage.setNotificationsEnabled(granted);
 
-      onComplete();
-      if (result === RESULTS.GRANTED) {
-          console.log('Notification permission granted');
+      if (granted) {
+        console.log('Notification permission granted');
       } else {
-          console.log('Notification permission denied');
+        console.log('Notification permission denied');
       }
     } catch (error) {
-        console.error("Failed to request notification permission", error);
+      console.error('Failed to request notification permission', error);
+    } finally {
+      onComplete();
     }
   };
 
@@ -60,17 +63,17 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
     <View style={styles.slide}>
       <View style={styles.content}>
         <Image source={require('../assets/images/location-icon.png')} style={styles.icon} />
-        <Text style={styles.title}>Accurate Prayer Times</Text>
+        <Text style={styles.title}>{t('onboarding.location.title')}</Text>
         <Text style={styles.description}>
-          To provide precise prayer schedules and Qibla direction, please allow location access. Your data is kept private.
+          {t('onboarding.location.description')}
         </Text>
       </View>
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.button} onPress={handleAllowLocation}>
-          <Text style={styles.buttonText}>Allow</Text>
+          <Text style={styles.buttonText}>{t('common.allow')}</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={goToNotificationStep}>
-          <Text style={styles.linkText}>Deny</Text>
+          <Text style={styles.linkText}>{t('common.deny')}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -80,17 +83,20 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
     <View style={styles.slide}>
       <View style={styles.content}>
         <Image source={require('../assets/images/notification-icon.png')} style={styles.icon} />
-        <Text style={styles.title}>Never Miss a Prayer</Text>
+        <Text style={styles.title}>{t('onboarding.notifications.title')}</Text>
         <Text style={styles.description}>
-          Enable notifications to receive timely alerts for daily prayer times, helping you stay connected to your faith.
+          {t('onboarding.notifications.description')}
         </Text>
       </View>
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.button} onPress={handleEnableNotifications}>
-          <Text style={styles.buttonText}>Enable Notifications</Text>
+          <Text style={styles.buttonText}>{t('onboarding.notifications.enable')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onComplete}>
-          <Text style={styles.linkText}>Skip for now</Text>
+        <TouchableOpacity onPress={() => {
+          settingsStorage.setNotificationsEnabled(false);
+          onComplete();
+        }}>
+          <Text style={styles.linkText}>{t('onboarding.notifications.skip')}</Text>
         </TouchableOpacity>
       </View>
     </View>
