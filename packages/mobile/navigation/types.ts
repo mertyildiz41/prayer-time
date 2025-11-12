@@ -6,4 +6,5 @@ export type RootStackParamList = {
   LocationSearch: undefined;
   Quran: undefined;
   Settings: undefined;
+  TahajjudSettings: undefined;
 };

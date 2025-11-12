@@ -16,9 +16,19 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import OnboardingScreen from './pages/OnboardingScreen';
 import QuranScreen from './pages/QuranScreen';
 import SettingsScreen from './pages/SettingsScreen';
+import TahajjudSettingsScreen from './pages/TahajjudSettingsScreen';
 
-import { I18nProvider } from './i18n';
-import { initializeNotifications } from './notifications/notificationService';
+import { I18nProvider, useLanguage, useTranslation } from './i18n';
+import type { TranslationKey } from './i18n/translations';
+import {
+  initializeNotifications,
+  schedulePrayerNotificationsRange,
+  generatePrayerSchedules,
+  cancelPrayerNotifications,
+  scheduleTahajjudNotification,
+  cancelTahajjudNotification,
+} from './notifications/notificationService';
+import { settingsStorage } from './storage/settingsStorage';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -140,6 +150,7 @@ function App() {
   
   return (
     <I18nProvider>
+      <NotificationBootstrapper />
       <SafeAreaProvider style={{ flex: 1, backgroundColor: '#0a0e1a' }}>
         <SafeAreaView style={{ flex: 1, backgroundColor: 'rgba(10, 14, 26, 0.85)' }}>
           <NavigationContainer
@@ -184,6 +195,7 @@ function App() {
               </Stack.Screen>
               <Stack.Screen name="Quran" component={QuranScreen} options={{ headerShown: false }} />
               <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="TahajjudSettings" component={TahajjudSettingsScreen} options={{ headerShown: false }} />
             </Stack.Navigator>
           </NavigationContainer>
           {location && currentRouteName && currentRouteName !== 'LocationSearch' && (
@@ -198,5 +210,69 @@ function App() {
     </I18nProvider>
   );
 }
+
+const NotificationBootstrapper = () => {
+  const { t } = useTranslation();
+  const { language } = useLanguage();
+
+  useEffect(() => {
+    const refreshNotifications = async () => {
+      try {
+        if (!settingsStorage.getNotificationsEnabled()) {
+          await cancelTahajjudNotification();
+          return;
+        }
+
+        const storedLocation = locationStorage.get();
+        if (!storedLocation) {
+          return;
+        }
+
+        const schedules = generatePrayerSchedules({
+          location: storedLocation,
+          startDate: new Date(),
+          days: 30,
+          method: 'Karachi',
+        });
+
+        if (!schedules.length) {
+          await cancelPrayerNotifications();
+          return;
+        }
+
+        const translatePrayerName = (name: string) => {
+          const key = `prayer.name.${name.toLowerCase()}` as TranslationKey;
+          const translated = t(key);
+          return translated === key ? name : translated;
+        };
+
+        await schedulePrayerNotificationsRange({
+          days: schedules,
+          translator: t,
+          translatePrayerName,
+          contextKey: `${language}-${storedLocation.latitude}-${storedLocation.longitude}-${storedLocation.timezone}`,
+          config: settingsStorage.getNotificationConfig(),
+          force: false,
+        });
+
+        const tahajjudEnabled = settingsStorage.getTahajjudReminderEnabled();
+        const tahajjudTime = settingsStorage.getTahajjudReminderTime();
+
+        if (tahajjudEnabled && tahajjudTime) {
+          const leadMinutes = settingsStorage.getTahajjudReminderLeadMinutes();
+          await scheduleTahajjudNotification({ translator: t, time: tahajjudTime, leadMinutes });
+        } else {
+          await cancelTahajjudNotification();
+        }
+      } catch (error) {
+        console.error('Failed to ensure prayer notifications on launch.', error);
+      }
+    };
+
+    refreshNotifications();
+  }, [language, t]);
+
+  return null;
+};
 
 export default App;

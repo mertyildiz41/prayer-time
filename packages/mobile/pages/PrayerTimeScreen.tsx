@@ -10,13 +10,19 @@ import {
   TouchableOpacity,
   ImageBackground,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Icon from '@react-native-vector-icons/material-icons';
 import { DailyPrayerTimes, Location, PrayerTime, PrayerTimeCalculator } from '@prayer-time/shared';
 
 import { useLanguage, useTranslation } from '../i18n';
 import type { TranslationKey } from '../i18n/translations';
-import { scheduleDailyPrayerNotifications } from '../notifications/notificationService';
+import {
+  schedulePrayerNotificationsRange,
+  generatePrayerSchedules,
+  buildNotificationConfigKey,
+  scheduleTahajjudNotification,
+  cancelTahajjudNotification,
+} from '../notifications/notificationService';
 import { settingsStorage } from '../storage/settingsStorage';
 
 type MaterialIconName = ComponentProps<typeof Icon>['name'];
@@ -63,6 +69,7 @@ const PRAYER_ICONS: Partial<Record<PrayerTime['name'], MaterialIconName>> = {
 };
 
 function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
+  const navigation = useNavigation();
   const [prayerTimes, setPrayerTimes] = useState<DailyPrayerTimes | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorKey, setErrorKey] = useState<TranslationKey | null>(null);
@@ -73,7 +80,12 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
     () => settingsStorage.getNotificationsEnabled(),
   );
+  const [notificationConfigVersion, setNotificationConfigVersion] = useState(0);
   const lastScheduleKeyRef = useRef<string | null>(null);
+  const [tahajjudEnabled, setTahajjudEnabled] = useState<boolean>(() => settingsStorage.getTahajjudReminderEnabled());
+  const [tahajjudTime, setTahajjudTime] = useState<string | null>(() => settingsStorage.getTahajjudReminderTime());
+  const [tahajjudLeadMinutes, setTahajjudLeadMinutes] = useState<number>(() => settingsStorage.getTahajjudReminderLeadMinutes());
+  const [twentyFourHourClock, setTwentyFourHourClock] = useState<boolean>(() => settingsStorage.getTwentyFourHourPreference());
 
   const translatePrayerName = useCallback(
     (name: PrayerTime['name']) => {
@@ -84,9 +96,38 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
     [t],
   );
 
+  const formatTahajjudTime = useCallback(
+    (time: string | null) => {
+      if (!time) {
+        return t('prayer.tahajjud.timeUnset');
+      }
+      if (twentyFourHourClock) {
+        return time;
+      }
+      return formatTo12Hour(time);
+    },
+    [t, twentyFourHourClock],
+  );
+
+  const formatLeadLabel = useCallback(
+    (minutes: number) => {
+      if (!minutes) {
+        return t('tahajjud.remindAtTime');
+      }
+      return t('tahajjud.remindMinutes', { minutes });
+    },
+    [t],
+  );
+
   useFocusEffect(
     useCallback(() => {
       setNotificationsEnabled(settingsStorage.getNotificationsEnabled());
+      setNotificationConfigVersion((prev) => prev + 1);
+      setTahajjudEnabled(settingsStorage.getTahajjudReminderEnabled());
+      setTahajjudTime(settingsStorage.getTahajjudReminderTime());
+      setTahajjudLeadMinutes(settingsStorage.getTahajjudReminderLeadMinutes());
+      setTwentyFourHourClock(settingsStorage.getTwentyFourHourPreference());
+      lastScheduleKeyRef.current = null;
     }, []),
   );
 
@@ -143,17 +184,35 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
       return;
     }
 
-  const scheduleKey = `${prayerTimes.date}-${language}-${location.latitude}-${location.longitude}`;
+    const config = settingsStorage.getNotificationConfig();
+    const schedules = generatePrayerSchedules({
+      location,
+      startDate: new Date(),
+      days: 30,
+      method: 'Karachi',
+    });
+
+    if (!schedules.length) {
+      return;
+    }
+
+    const contextKey = `${language}-${location.latitude}-${location.longitude}-${location.timezone}`;
+    const configSignature = buildNotificationConfigKey(config);
+    const firstDate = schedules[0]?.date ?? prayerTimes.date;
+    const scheduleKey = `${contextKey}|${configSignature}|${firstDate}`;
+
     if (lastScheduleKeyRef.current === scheduleKey) {
       return;
     }
 
     const scheduleNotifications = async () => {
-      const success = await scheduleDailyPrayerNotifications({
-        prayers: prayerTimes.prayers,
-        dateKey: scheduleKey,
+      const success = await schedulePrayerNotificationsRange({
+        days: schedules,
         translator: t,
         translatePrayerName,
+        contextKey,
+        config,
+        force: false,
       });
 
       if (success) {
@@ -164,13 +223,50 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
     scheduleNotifications().catch((error) => {
       console.error('Failed to schedule prayer notifications', error);
     });
-  }, [prayerTimes, notificationsEnabled, t, translatePrayerName, language]);
+  }, [
+    prayerTimes,
+    notificationsEnabled,
+    t,
+    translatePrayerName,
+    language,
+    location,
+    notificationConfigVersion,
+  ]);
 
   useEffect(() => {
     if (!notificationsEnabled) {
       lastScheduleKeyRef.current = null;
     }
   }, [notificationsEnabled]);
+
+  useEffect(() => {
+    if (!tahajjudEnabled) {
+      cancelTahajjudNotification().catch((error) => {
+        console.error('Failed to cancel tahajjud notification.', error);
+      });
+    }
+  }, [tahajjudEnabled]);
+
+  useEffect(() => {
+    if (!notificationsEnabled) {
+      cancelTahajjudNotification().catch((error) => {
+        console.error('Failed to cancel tahajjud notification when notifications are disabled.', error);
+      });
+      return;
+    }
+
+    if (!tahajjudEnabled || !tahajjudTime) {
+      return;
+    }
+
+    scheduleTahajjudNotification({ translator: t, time: tahajjudTime, leadMinutes: tahajjudLeadMinutes }).catch((error) => {
+      console.error('Failed to schedule tahajjud notification.', error);
+    });
+  }, [notificationsEnabled, tahajjudEnabled, tahajjudTime, t, tahajjudLeadMinutes]);
+
+  const handleOpenTahajjudSettings = useCallback(() => {
+    navigation.navigate('TahajjudSettings');
+  }, [navigation]);
 
   if (loading) {
     return (
@@ -243,14 +339,16 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
           ) : null}
 
           <View style={styles.prayersContainer}>
-            {prayerItems.map(({ prayer, iconName }) => {
+            {prayerItems.map(({ prayer, iconName }, index) => {
               const isNextPrayer = nextPrayer?.name === prayer.name;
+              const isLast = index === prayerItems.length - 1;
               return (
                 <View
                   key={prayer.name}
                   style={[
                     styles.prayerRow,
                     isNextPrayer && styles.prayerRowActive,
+                    !isLast && styles.prayerRowSpacing,
                   ]}
                 >
                   <View style={styles.prayerLeft}>
@@ -279,6 +377,36 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
                 </View>
               );
             })}
+            <TouchableOpacity
+              style={[
+                styles.tahajjudRow,
+                tahajjudEnabled ? styles.tahajjudRowActive : styles.tahajjudRowInactive,
+              ]}
+              activeOpacity={0.85}
+              onPress={handleOpenTahajjudSettings}
+            >
+              <View style={styles.tahajjudLeft}>
+                <View style={styles.tahajjudIconWrapper}>
+                  <Icon name="star" size={20} color="#facc15" />
+                </View>
+                <View style={styles.tahajjudTextGroup}>
+                  <Text style={styles.tahajjudTitle}>{t('prayer.tahajjud.ctaTitle')}</Text>
+                  <Text style={styles.tahajjudSubtitle}>{t('prayer.tahajjud.ctaSubtitle')}</Text>
+                </View>
+              </View>
+              <View style={styles.tahajjudRight}>
+                {tahajjudEnabled && tahajjudTime ? (
+                  <View style={styles.tahajjudBadge}>
+                    <Text style={styles.tahajjudBadgeText}>{formatTahajjudTime(tahajjudTime)}</Text>
+                    <Text style={styles.tahajjudBadgeSubText}>
+                      {formatLeadLabel(tahajjudLeadMinutes)}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={styles.tahajjudSetupText}>{t('tahajjud.setupAction')}</Text>
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </View>
@@ -362,6 +490,92 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     marginBottom: 16,
   },
+  tahajjudRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 24,
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(96, 165, 250, 0.45)',
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    shadowColor: 'rgba(59, 130, 246, 0.4)',
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 6,
+  },
+  tahajjudRowActive: {
+    borderColor: 'rgba(96, 165, 250, 0.75)',
+    backgroundColor: 'rgba(29, 78, 216, 0.18)',
+  },
+  tahajjudRowInactive: {
+    opacity: 0.96,
+  },
+  tahajjudLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 16,
+  },
+  tahajjudIconWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(59, 130, 246, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.35)',
+  },
+  tahajjudTextGroup: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  tahajjudTitle: {
+    color: '#fde68a',
+    fontSize: 17,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  tahajjudSubtitle: {
+    color: 'rgba(255, 251, 235, 0.88)',
+    fontSize: 13,
+    marginTop: 6,
+  },
+  tahajjudRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tahajjudBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.45)',
+    backgroundColor: 'rgba(13, 19, 33, 0.9)',
+  },
+  tahajjudBadgeText: {
+    color: '#bfdbfe',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  tahajjudBadgeSubText: {
+    marginTop: 4,
+    color: '#60a5fa',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  tahajjudSetupText: {
+    color: '#60a5fa',
+    fontSize: 15,
+    fontWeight: '600',
+  },
   countdownSection: {
     alignItems: 'center',
   },
@@ -379,24 +593,30 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   prayersContainer: {
-    backgroundColor: 'rgba(10, 14, 26, 0.5)',
-    borderRadius: 16,
-    overflow: 'hidden',
+    marginTop: 8,
   },
   prayerRow: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 18,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.12)',
   },
   prayerRowActive: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    borderLeftWidth: 3,
-    borderLeftColor: '#38bdf8',
-    paddingLeft: 17,
+    borderColor: 'rgba(56, 189, 248, 0.5)',
+    backgroundColor: 'rgba(30, 64, 175, 0.28)',
+    shadowColor: 'rgba(56, 189, 248, 0.45)',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+  prayerRowSpacing: {
+    marginBottom: 12,
   },
   prayerLeft: {
     flexDirection: 'row',
