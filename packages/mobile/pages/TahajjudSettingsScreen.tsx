@@ -319,8 +319,8 @@ const TahajjudSettingsScreen = () => {
             <Switch
               value={enabled}
               onValueChange={handleToggleEnabled}
-              trackColor={{ false: '#1f2937', true: '#facc15' }}
-              thumbColor={enabled ? '#fde68a' : '#e5e7eb'}
+              trackColor={{ false: '#1f2937', true: '#2563eb' }}
+              thumbColor={enabled ? '#bfdbfe' : '#e5e7eb'}
             />
           </View>
         </View>
@@ -344,7 +344,7 @@ const TahajjudSettingsScreen = () => {
                     <Icon
                       name="info-outline"
                       size={16}
-                      color={isActive ? '#0f172a' : '#94a3b8'}
+                      color={isActive ? '#e2e8f0' : '#94a3b8'}
                       style={styles.methodInfoIcon}
                     />
                   ) : null}
@@ -365,7 +365,7 @@ const TahajjudSettingsScreen = () => {
             >
               <Text style={styles.timeFieldValue}>{formattedStart}</Text>
               {startTimeInteractive ? (
-                <Icon name="schedule" size={18} color="#facc15" />
+                <Icon name="schedule" size={18} color="#60a5fa" />
               ) : (
                 <Icon name="lock" size={18} color="#64748b" />
               )}
@@ -391,9 +391,9 @@ const TahajjudSettingsScreen = () => {
             minimumValue={0}
             maximumValue={MAX_LEAD_MINUTES}
             step={LEAD_STEP}
-            minimumTrackTintColor="#facc15"
+            minimumTrackTintColor="#60a5fa"
             maximumTrackTintColor="#1e293b"
-            thumbTintColor="#facc15"
+            thumbTintColor="#3b82f6"
             value={leadMinutes}
             onValueChange={handleSliderChange}
           />
@@ -525,8 +525,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   methodChipActive: {
-    backgroundColor: '#facc15',
-    borderColor: '#facc15',
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
   },
   methodText: {
     color: '#cbd5f5',
@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   methodTextActive: {
-    color: '#0f172a',
+    color: '#e2e8f0',
   },
   methodInfoIcon: {
     marginLeft: 4,
@@ -583,7 +583,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   sliderValue: {
-    color: '#facc15',
+    color: '#60a5fa',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -627,10 +627,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#2563eb',
+    shadowColor: '#1d4ed8',
     shadowOpacity: 0.35,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
   },
   saveButtonDisabled: {
     opacity: 0.65,

@@ -109,6 +109,7 @@
   "tahajjud.remindMinutes": "{{minutes}} mins before",
   "tahajjud.manageAction": "Manage",
   "tahajjud.methodLabel": "Method: {{method}}",
+  "tahajjud.summaryTime": "Reminder at {{time}}",
   "tahajjud.settingsTitle": "Tahajjud Settings",
   "tahajjud.enableLabel": "Enable Tahajjud reminders",
   "tahajjud.calculationHeading": "Calculation method",

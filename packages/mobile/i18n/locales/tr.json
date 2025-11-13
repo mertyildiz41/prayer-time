@@ -109,6 +109,7 @@
   "tahajjud.remindMinutes": "{{minutes}} dk önce",
   "tahajjud.manageAction": "Yönet",
   "tahajjud.methodLabel": "Yöntem: {{method}}",
+  "tahajjud.summaryTime": "Hatırlatma saati {{time}}",
   "tahajjud.settingsTitle": "Teheccüd Ayarları",
   "tahajjud.enableLabel": "Teheccüd hatırlatmalarını etkinleştir",
   "tahajjud.calculationHeading": "Hesaplama yöntemi",

@@ -663,16 +663,14 @@ const SettingsScreen = () => {
             <Switch
               value={tahajjudEnabled}
               onValueChange={handleTahajjudToggle}
-              trackColor={{ false: '#1f2937', true: '#facc15' }}
-              thumbColor={tahajjudEnabled ? '#fcd34d' : '#e5e7eb'}
+              trackColor={{ false: '#1f2937', true: '#2563eb' }}
+              thumbColor={tahajjudEnabled ? '#93c5fd' : '#e5e7eb'}
               disabled={tahajjudControlsDisabled}
             />
           </View>
           <View style={styles.tahajjudSummaryRow}>
             <View style={styles.tahajjudSummaryText}>
-              <Text style={styles.tahajjudSummaryTitle}>
-                {t('tahajjud.methodLabel', { method: t(`tahajjud.method.${tahajjudMethod}`) })}
-              </Text>
+              <Text style={styles.tahajjudSummaryTitle}>{t('tahajjud.methodLabel', { method: t(`tahajjud.method.${tahajjudMethod}`) })}</Text>
               <Text style={styles.tahajjudSummaryLine}>
                 {tahajjudTime
                   ? t('tahajjud.summaryTime', { time: formatTahajjudTime(tahajjudTime) })
@@ -689,7 +687,7 @@ const SettingsScreen = () => {
               disabled={tahajjudControlsDisabled}
             >
               <Text style={styles.tahajjudManageText}>{t('tahajjud.manageAction')}</Text>
-              <Icon name="chevron-right" size={18} color="#facc15" />
+              <Icon name="chevron-right" size={18} color="#60a5fa" />
             </TouchableOpacity>
           </View>
         </View>
@@ -928,13 +926,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tahajjudSummaryTitle: {
-    color: '#fde68a',
+    color: '#e2e8f0',
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   tahajjudSummaryLine: {
-    color: '#f8fafc',
+    color: '#94a3b8',
     fontSize: 13,
     marginBottom: 4,
   },
@@ -944,14 +942,14 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(250, 204, 21, 0.35)',
-    backgroundColor: 'rgba(250, 204, 21, 0.12)',
+    borderColor: 'rgba(96, 165, 250, 0.35)',
+    backgroundColor: 'rgba(37, 99, 235, 0.12)',
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 6,
   },
   tahajjudManageText: {
-    color: '#facc15',
+    color: '#60a5fa',
     fontSize: 14,
     fontWeight: '600',
   },

@@ -3,6 +3,46 @@
   "reactNativePath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native",
   "reactNativeVersion": "0.81",
   "dependencies": {
+    "@react-native-community/push-notification-ios": {
+      "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/push-notification-ios",
+      "name": "@react-native-community/push-notification-ios",
+      "platforms": {
+        "ios": {
+          "podspecPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/push-notification-ios/RNCPushNotificationIOS.podspec",
+          "version": "1.11.0",
+          "configurations": [],
+          "scriptPhases": []
+        },
+        "android": null
+      }
+    },
+    "@react-native-community/slider": {
+      "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/slider",
+      "name": "@react-native-community/slider",
+      "platforms": {
+        "ios": {
+          "podspecPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/slider/react-native-slider.podspec",
+          "version": "4.5.7",
+          "configurations": [],
+          "scriptPhases": []
+        },
+        "android": {
+          "sourceDir": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/slider/android",
+          "packageImportPath": "import com.reactnativecommunity.slider.ReactSliderPackage;",
+          "packageInstance": "new ReactSliderPackage()",
+          "buildTypes": [],
+          "libraryName": "RNCSlider",
+          "componentDescriptors": [
+            "RNCSliderComponentDescriptor"
+          ],
+          "cmakeListsPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/slider/android/src/main/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
     "@react-native-vector-icons/material-icons": {
       "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-vector-icons/material-icons",
       "name": "@react-native-vector-icons/material-icons",
@@ -21,38 +61,6 @@
           "libraryName": "VectorIconsMaterialIcons",
           "componentDescriptors": [],
           "cmakeListsPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-vector-icons/material-icons/android/build/generated/source/codegen/jni/CMakeLists.txt",
-          "cxxModuleCMakeListsModuleName": null,
-          "cxxModuleCMakeListsPath": null,
-          "cxxModuleHeaderName": null,
-          "isPureCxxDependency": false
-        }
-      }
-    },
-    "@react-native-community/push-notification-ios": {
-      "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/push-notification-ios",
-      "name": "@react-native-community/push-notification-ios",
-      "platforms": {
-        "ios": {
-          "podspecPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/@react-native-community/push-notification-ios/RNCPushNotificationIOS.podspec",
-          "version": "1.11.0",
-          "configurations": [],
-          "scriptPhases": []
-        },
-        "android": null
-      }
-    },
-    "react-native-push-notification": {
-      "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-push-notification",
-      "name": "react-native-push-notification",
-      "platforms": {
-        "ios": null,
-        "android": {
-          "sourceDir": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-push-notification/android",
-          "packageImportPath": "import com.dieam.reactnativepushnotification.ReactNativePushNotificationPackage;",
-          "packageInstance": "new ReactNativePushNotificationPackage()",
-          "buildTypes": [],
-          "componentDescriptors": [],
-          "cmakeListsPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-push-notification/android/build/generated/source/codegen/jni/CMakeLists.txt",
           "cxxModuleCMakeListsModuleName": null,
           "cxxModuleCMakeListsPath": null,
           "cxxModuleHeaderName": null,
@@ -151,6 +159,25 @@
           "libraryName": "RNPermissionsSpec",
           "componentDescriptors": [],
           "cmakeListsPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/packages/mobile/node_modules/react-native-permissions/android/build/generated/source/codegen/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-push-notification": {
+      "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-push-notification",
+      "name": "react-native-push-notification",
+      "platforms": {
+        "ios": null,
+        "android": {
+          "sourceDir": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-push-notification/android",
+          "packageImportPath": "import com.dieam.reactnativepushnotification.ReactNativePushNotificationPackage;",
+          "packageInstance": "new ReactNativePushNotificationPackage()",
+          "buildTypes": [],
+          "componentDescriptors": [],
+          "cmakeListsPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-push-notification/android/build/generated/source/codegen/jni/CMakeLists.txt",
           "cxxModuleCMakeListsModuleName": null,
           "cxxModuleCMakeListsPath": null,
           "cxxModuleHeaderName": null,

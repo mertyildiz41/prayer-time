@@ -109,6 +109,7 @@
   "tahajjud.remindMinutes": "{{minutes}} menit sebelum",
   "tahajjud.manageAction": "Kelola",
   "tahajjud.methodLabel": "Metode: {{method}}",
+  "tahajjud.summaryTime": "Pengingat pukul {{time}}",
   "tahajjud.settingsTitle": "Pengaturan Tahajud",
   "tahajjud.enableLabel": "Aktifkan pengingat Tahajud",
   "tahajjud.calculationHeading": "Metode perhitungan",

@@ -387,7 +387,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
             >
               <View style={styles.tahajjudLeft}>
                 <View style={styles.tahajjudIconWrapper}>
-                  <Icon name="star" size={20} color="#facc15" />
+                  <Icon name="star" size={20} color="#60a5fa" />
                 </View>
                 <View style={styles.tahajjudTextGroup}>
                   <Text style={styles.tahajjudTitle}>{t('prayer.tahajjud.ctaTitle')}</Text>
@@ -495,25 +495,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 24,
-    paddingVertical: 18,
-    paddingHorizontal: 22,
-    borderRadius: 22,
+  paddingVertical: 14,
+  paddingHorizontal: 18,
+    borderRadius: 18,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: 'rgba(96, 165, 250, 0.45)',
-    backgroundColor: 'rgba(15, 23, 42, 0.65)',
-    shadowColor: 'rgba(59, 130, 246, 0.4)',
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 6,
+    backgroundColor: 'rgba(12, 18, 34, 0.85)',
+    shadowColor: 'rgba(59, 130, 246, 0.35)',
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 4,
   },
   tahajjudRowActive: {
     borderColor: 'rgba(96, 165, 250, 0.75)',
-    backgroundColor: 'rgba(29, 78, 216, 0.18)',
+    backgroundColor: 'rgba(30, 64, 175, 0.25)',
   },
   tahajjudRowInactive: {
-    opacity: 0.96,
+    opacity: 0.94,
   },
   tahajjudLeft: {
     flexDirection: 'row',
@@ -522,58 +522,58 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   tahajjudIconWrapper: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(59, 130, 246, 0.18)',
+    backgroundColor: 'rgba(96, 165, 250, 0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.35)',
+    borderColor: 'rgba(96, 165, 250, 0.35)',
   },
   tahajjudTextGroup: {
     marginLeft: 16,
     flex: 1,
   },
   tahajjudTitle: {
-    color: '#fde68a',
-    fontSize: 17,
+    color: '#e2e8f0',
+    fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
   tahajjudSubtitle: {
-    color: 'rgba(255, 251, 235, 0.88)',
+    color: '#94a3b8',
     fontSize: 13,
-    marginTop: 6,
+    marginTop: 4,
   },
   tahajjudRight: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   tahajjudBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(96, 165, 250, 0.45)',
-    backgroundColor: 'rgba(13, 19, 33, 0.9)',
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
   },
   tahajjudBadgeText: {
-    color: '#bfdbfe',
-    fontSize: 14,
+    color: '#dbeafe',
+    fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
   },
   tahajjudBadgeSubText: {
     marginTop: 4,
     color: '#60a5fa',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '500',
     textAlign: 'center',
   },
   tahajjudSetupText: {
     color: '#60a5fa',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   countdownSection: {

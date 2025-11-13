@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { NavigationContainer, StackActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Country } from 'country-state-city';
@@ -27,10 +27,14 @@ import {
   cancelPrayerNotifications,
   scheduleTahajjudNotification,
   cancelTahajjudNotification,
+  resetNotificationScheduleCache,
 } from './notifications/notificationService';
 import { settingsStorage } from './storage/settingsStorage';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const SIGNIFICANT_TIME_CHANGE_THRESHOLD_MS = 60 * 1000;
+const TIME_CHANGE_POLL_INTERVAL_MS = 30 * 1000;
 
 type LocationParam = RootStackParamList['Qibla']['location'];
 type StoredLocation = LocationParam | null;
@@ -50,16 +54,12 @@ function App() {
 
   useEffect(() => {
     const storedLocation = locationStorage.get();
-
     if (storedLocation) {
+      initializeNotifications();
       setLocation(storedLocation);
     }
 
     setIsLoading(false);
-  }, []);
-
-  useEffect(() => {
-    initializeNotifications();
   }, []);
 
   const handleLocationSelect = useCallback(
@@ -214,9 +214,10 @@ function App() {
 const NotificationBootstrapper = () => {
   const { t } = useTranslation();
   const { language } = useLanguage();
+  const lastTimeCheckRef = useRef<number>(Date.now());
 
-  useEffect(() => {
-    const refreshNotifications = async () => {
+  const refreshNotifications = useCallback(
+    async (options?: { force?: boolean }) => {
       try {
         if (!settingsStorage.getNotificationsEnabled()) {
           await cancelTahajjudNotification();
@@ -246,13 +247,14 @@ const NotificationBootstrapper = () => {
           return translated === key ? name : translated;
         };
 
+        const contextKey = `${language}-${storedLocation.latitude}-${storedLocation.longitude}-${storedLocation.timezone}`;
         await schedulePrayerNotificationsRange({
           days: schedules,
           translator: t,
           translatePrayerName,
-          contextKey: `${language}-${storedLocation.latitude}-${storedLocation.longitude}-${storedLocation.timezone}`,
+          contextKey,
           config: settingsStorage.getNotificationConfig(),
-          force: false,
+          force: options?.force ?? false,
         });
 
         const tahajjudEnabled = settingsStorage.getTahajjudReminderEnabled();
@@ -267,10 +269,60 @@ const NotificationBootstrapper = () => {
       } catch (error) {
         console.error('Failed to ensure prayer notifications on launch.', error);
       }
+    },
+    [language, t],
+  );
+
+  useEffect(() => {
+    refreshNotifications().catch((error) => {
+      console.error('Failed to ensure prayer notifications on launch.', error);
+    });
+  }, [refreshNotifications]);
+
+  useEffect(() => {
+    const handleAppStateChange = (nextState: string) => {
+      if (nextState !== 'active') {
+        return;
+      }
+
+      const now = Date.now();
+      const drift = Math.abs(now - lastTimeCheckRef.current);
+      lastTimeCheckRef.current = now;
+
+      if (drift > SIGNIFICANT_TIME_CHANGE_THRESHOLD_MS) {
+        resetNotificationScheduleCache();
+        refreshNotifications({ force: true }).catch((error) => {
+          console.error('Failed to refresh notifications after app resume.', error);
+        });
+      }
     };
 
-    refreshNotifications();
-  }, [language, t]);
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [refreshNotifications]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const previous = lastTimeCheckRef.current;
+      const drift = Math.abs(now - previous);
+      lastTimeCheckRef.current = now;
+
+      if (drift > SIGNIFICANT_TIME_CHANGE_THRESHOLD_MS) {
+        resetNotificationScheduleCache();
+        refreshNotifications({ force: true }).catch((error) => {
+          console.error('Failed to refresh notifications after time change.', error);
+        });
+      }
+    }, TIME_CHANGE_POLL_INTERVAL_MS);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [refreshNotifications]);
 
   return null;
 };

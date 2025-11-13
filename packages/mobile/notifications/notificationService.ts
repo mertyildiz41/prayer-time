@@ -32,6 +32,7 @@ const ANDROID_EXACT_ALARM_MIN_SDK = 31;
 
 let isConfigured = false;
 let lastScheduledKey: string | null = null;
+let activePrayerSchedulingPromise: Promise<boolean> | null = null;
 
 export type TranslateFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
 export type TranslatePrayerNameFn = (prayerName: PrayerTime['name']) => string;
@@ -228,9 +229,8 @@ const cancelScheduledIds = (ids: string[]) => {
 
   uniqueIds.forEach((id) => {
     try {
-      PushNotification.cancelLocalNotification(id);
-      if (typeof PushNotification.cancelLocalNotifications === 'function') {
-        PushNotification.cancelLocalNotifications({ id });
+      if (typeof PushNotification.cancelLocalNotification === 'function') {
+        PushNotification.cancelLocalNotification(id);
       }
     } catch (error) {
       console.error('Failed to cancel scheduled notification', id, error);
@@ -391,6 +391,7 @@ const getScheduledPrayerNotificationIds = async (): Promise<string[]> => {
 
 export const cancelPrayerNotifications = async () => {
   try {
+    console.log('Cancelling prayer notifications');
     const ids = await getScheduledPrayerNotificationIds();
     cancelScheduledIds(ids);
   } catch (error) {
@@ -403,7 +404,19 @@ export const cancelPrayerNotifications = async () => {
 const schedulePayloads = (payloads: NotificationPayload[]) => {
   createChannelIfNeeded();
 
-  payloads.forEach((payload) => {
+  const sorted = [...payloads].sort((first, second) => first.date.getTime() - second.date.getTime());
+
+  let effectivePayloads = sorted;
+  if (Platform.OS === 'ios' && sorted.length > 64) {
+    effectivePayloads = sorted.slice(0, 64);
+    console.log(
+      `Scheduling ${effectivePayloads.length} notifications (trimmed from ${sorted.length} to respect iOS limits)`,
+    );
+  } else {
+    console.log(`Scheduling ${sorted.length} notifications`);
+  }
+
+  effectivePayloads.forEach((payload) => {
     if (payload.date.getTime() <= Date.now()) {
       return;
     }
@@ -429,6 +442,7 @@ const schedulePayloads = (payloads: NotificationPayload[]) => {
       },
     });
   });
+  
 };
 
 export type PrayerScheduleDay = {
@@ -567,49 +581,72 @@ export const schedulePrayerNotificationsRange = async ({
   const datesSignature = sortedDays.map((day) => day.date).join(',');
   const compositeKey = `${contextKey}|${configSignature}|${datesSignature}`;
 
+  const executeScheduling = async (): Promise<boolean> => {
+    const granted = await checkNotificationAuthorization();
+    if (!granted) {
+      return false;
+    }
+
+    const exactAlarmsAllowed = await checkExactAlarmPermission();
+    if (!exactAlarmsAllowed) {
+      console.warn('Exact alarm permission missing; prayer notifications will not be scheduled.');
+      return false;
+    }
+
+    const now = Date.now();
+    const payloads: NotificationPayload[] = [];
+    const allocateNotificationId = createNotificationIdAllocator();
+
+    for (const day of sortedDays) {
+      payloads.push(
+        ...buildPayloadsForDay({
+          day,
+          contextKey,
+          normalizedConfig,
+          translator,
+          translatePrayerName,
+          now,
+          allocateNotificationId,
+        }),
+      );
+    }
+
+    await cancelPrayerNotifications();
+
+    if (!payloads.length) {
+      lastScheduledKey = compositeKey;
+      return true;
+    }
+
+    schedulePayloads(payloads);
+    lastScheduledKey = compositeKey;
+    return true;
+  };
+
+  if (activePrayerSchedulingPromise) {
+    try {
+      await activePrayerSchedulingPromise;
+    } catch (error) {
+      console.error('Previous prayer notification scheduling attempt failed.', error);
+    }
+
+    if (!force && lastScheduledKey === compositeKey) {
+      return true;
+    }
+  }
+
   if (!force && lastScheduledKey === compositeKey) {
     return true;
   }
 
-  const granted = await checkNotificationAuthorization();
-  if (!granted) {
-    return false;
+  const schedulingPromise = executeScheduling();
+  activePrayerSchedulingPromise = schedulingPromise;
+
+  try {
+    return await schedulingPromise;
+  } finally {
+    activePrayerSchedulingPromise = null;
   }
-
-  const exactAlarmsAllowed = await checkExactAlarmPermission();
-  if (!exactAlarmsAllowed) {
-    console.warn('Exact alarm permission missing; prayer notifications will not be scheduled.');
-    return false;
-  }
-
-  const now = Date.now();
-  const payloads: NotificationPayload[] = [];
-  const allocateNotificationId = createNotificationIdAllocator();
-
-  for (const day of sortedDays) {
-    payloads.push(
-      ...buildPayloadsForDay({
-        day,
-        contextKey,
-        normalizedConfig,
-        translator,
-        translatePrayerName,
-        now,
-        allocateNotificationId,
-      }),
-    );
-  }
-
-  await cancelPrayerNotifications();
-
-  if (!payloads.length) {
-    lastScheduledKey = compositeKey;
-    return true;
-  }
-
-  schedulePayloads(payloads);
-  lastScheduledKey = compositeKey;
-  return true;
 };
 
 type ScheduleDailyPrayerOptions = {
@@ -769,6 +806,7 @@ export const generatePrayerSchedules = ({
     target.setDate(baseDate.getDate() + offset);
 
     const daily = PrayerTimeCalculator.calculatePrayerTimes(target, location, method);
+    
     schedules.push({
       date: daily.date,
       prayers: daily.prayers.map((prayer) => ({ ...prayer })),
