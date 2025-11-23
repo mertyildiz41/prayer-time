@@ -92,6 +92,42 @@
         }
       }
     },
+    "react-native-maps": {
+      "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-maps",
+      "name": "react-native-maps",
+      "platforms": {
+        "ios": {
+          "podspecPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-maps/react-native-maps.podspec",
+          "version": "1.26.18",
+          "configurations": [],
+          "scriptPhases": []
+        },
+        "android": {
+          "sourceDir": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-maps/android",
+          "packageImportPath": "import com.rnmaps.maps.MapsPackage;",
+          "packageInstance": "new MapsPackage()",
+          "buildTypes": [],
+          "libraryName": "RNMapsSpecs",
+          "componentDescriptors": [
+            "RNMapsCalloutComponentDescriptor",
+            "RNMapsCircleComponentDescriptor",
+            "RNMapsGoogleMapViewComponentDescriptor",
+            "RNMapsGooglePolygonComponentDescriptor",
+            "RNMapsMapViewComponentDescriptor",
+            "RNMapsMarkerComponentDescriptor",
+            "RNMapsOverlayComponentDescriptor",
+            "RNMapsPolylineComponentDescriptor",
+            "RNMapsUrlTileComponentDescriptor",
+            "RNMapsWMSTileComponentDescriptor"
+          ],
+          "cmakeListsPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-maps/android/src/main/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
     "react-native-mmkv": {
       "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-mmkv",
       "name": "react-native-mmkv",
@@ -245,6 +281,61 @@
             "RNSSafeAreaViewComponentDescriptor"
           ],
           "cmakeListsPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-screens/android/src/main/jni/CMakeLists.txt",
+          "cxxModuleCMakeListsModuleName": null,
+          "cxxModuleCMakeListsPath": null,
+          "cxxModuleHeaderName": null,
+          "isPureCxxDependency": false
+        }
+      }
+    },
+    "react-native-svg": {
+      "root": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-svg",
+      "name": "react-native-svg",
+      "platforms": {
+        "ios": {
+          "podspecPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-svg/RNSVG.podspec",
+          "version": "15.15.0",
+          "configurations": [],
+          "scriptPhases": []
+        },
+        "android": {
+          "sourceDir": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-svg/android",
+          "packageImportPath": "import com.horcrux.svg.SvgPackage;",
+          "packageInstance": "new SvgPackage()",
+          "buildTypes": [],
+          "libraryName": "rnsvg",
+          "componentDescriptors": [
+            "RNSVGCircleComponentDescriptor",
+            "RNSVGClipPathComponentDescriptor",
+            "RNSVGDefsComponentDescriptor",
+            "RNSVGFeBlendComponentDescriptor",
+            "RNSVGFeColorMatrixComponentDescriptor",
+            "RNSVGFeCompositeComponentDescriptor",
+            "RNSVGFeFloodComponentDescriptor",
+            "RNSVGFeGaussianBlurComponentDescriptor",
+            "RNSVGFeMergeComponentDescriptor",
+            "RNSVGFeOffsetComponentDescriptor",
+            "RNSVGFilterComponentDescriptor",
+            "RNSVGEllipseComponentDescriptor",
+            "RNSVGForeignObjectComponentDescriptor",
+            "RNSVGGroupComponentDescriptor",
+            "RNSVGImageComponentDescriptor",
+            "RNSVGLinearGradientComponentDescriptor",
+            "RNSVGLineComponentDescriptor",
+            "RNSVGMarkerComponentDescriptor",
+            "RNSVGMaskComponentDescriptor",
+            "RNSVGPathComponentDescriptor",
+            "RNSVGPatternComponentDescriptor",
+            "RNSVGRadialGradientComponentDescriptor",
+            "RNSVGRectComponentDescriptor",
+            "RNSVGSvgViewAndroidComponentDescriptor",
+            "RNSVGSymbolComponentDescriptor",
+            "RNSVGTextComponentDescriptor",
+            "RNSVGTextPathComponentDescriptor",
+            "RNSVGTSpanComponentDescriptor",
+            "RNSVGUseComponentDescriptor"
+          ],
+          "cmakeListsPath": "/Users/mertyildiz/Documents/GitHub/prayer-time/node_modules/react-native-svg/android/src/main/jni/CMakeLists.txt",
           "cxxModuleCMakeListsModuleName": null,
           "cxxModuleCMakeListsPath": null,
           "cxxModuleHeaderName": null,

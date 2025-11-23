@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Image, Animated, Easing, TouchableOpacity } from 'react-native';
 import CompassHeading from 'react-native-compass-heading';
 import { PrayerTimeCalculator } from '@prayer-time/shared';
 import Icon from '@react-native-vector-icons/material-icons';
@@ -12,7 +12,7 @@ import { useTranslation } from '../i18n';
 
 type QiblaScreenProps = NativeStackScreenProps<RootStackParamList, 'Qibla'>;
 
-const QiblaScreen: React.FC<QiblaScreenProps> = ({ route }) => {
+const QiblaScreen: React.FC<QiblaScreenProps> = ({ route, navigation }) => {
   const { location } = route.params;
   const { t } = useTranslation();
 
@@ -80,6 +80,14 @@ const QiblaScreen: React.FC<QiblaScreenProps> = ({ route }) => {
         <Text style={styles.locationText}>
           {location.city}, {location.country}
         </Text>
+        <TouchableOpacity
+          style={styles.findMosqueButton}
+          onPress={() => navigation.navigate('MosqueFinder')}
+          activeOpacity={0.8}
+        >
+          <Icon name="place" size={20} color="#22c55e" />
+          <Text style={styles.findMosqueButtonText}>{t('qibla.findMosques')}</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -130,6 +138,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#94a3b8',
     marginTop: 10,
+  },
+  findMosqueButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+    borderWidth: 1,
+    borderColor: '#22c55e',
+    borderRadius: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginTop: 32,
+    gap: 8,
+  },
+  findMosqueButtonText: {
+    color: '#22c55e',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

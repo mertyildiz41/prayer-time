@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 8,
   },
   screenTitle: {
     fontSize: 24,
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(23, 58, 93, 0.8)',
     borderRadius: 20,
     padding: 24,
-    marginBottom: 24,
+    marginBottom: 4,
     alignItems: 'center',
   },
   largeCardLabel: {
@@ -494,9 +494,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 24,
-  paddingVertical: 14,
-  paddingHorizontal: 18,
+    marginTop: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     borderRadius: 18,
     borderWidth: 1,
     borderStyle: 'dashed',
@@ -593,7 +593,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   prayersContainer: {
-    marginTop: 8,
+    marginTop: 4,
   },
   prayerRow: {
     paddingHorizontal: 20,
@@ -616,12 +616,12 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   prayerRowSpacing: {
-    marginBottom: 12,
+    marginBottom: 4,
   },
   prayerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 2,
   },
   prayerName: {
     fontSize: 16,

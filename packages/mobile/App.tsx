@@ -15,6 +15,13 @@ import QiblaScreen from './pages/QiblaScreen';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import OnboardingScreen from './pages/OnboardingScreen';
 import QuranScreen from './pages/QuranScreen';
+import QuranReaderScreen from './pages/QuranReaderScreen';
+import MosqueFinderScreen from './pages/MosqueFinderScreen';
+import UmmahScreen from './pages/UmmahScreen';
+import CreateGroupScreen from './pages/CreateGroupScreen';
+import GroupDetailScreen from './pages/GroupDetailScreen';
+import CounterScreen from './pages/CounterScreen';
+import CompletionScreen from './pages/CompletionScreen';
 import SettingsScreen from './pages/SettingsScreen';
 import TahajjudSettingsScreen from './pages/TahajjudSettingsScreen';
 
@@ -39,7 +46,7 @@ const TIME_CHANGE_POLL_INTERVAL_MS = 30 * 1000;
 type LocationParam = RootStackParamList['Qibla']['location'];
 type StoredLocation = LocationParam | null;
 
-const BOTTOM_NAV_ROUTES: Array<keyof RootStackParamList> = ['PrayerTime', 'Qibla', 'Quran', 'Settings'];
+const BOTTOM_NAV_ROUTES: Array<keyof RootStackParamList> = ['PrayerTime', 'Qibla', 'Quran', 'Ummah', 'Settings'];
 
 function App() {
 
@@ -125,6 +132,11 @@ function App() {
         return;
       }
 
+      if (target === 'Ummah') {
+        nav.dispatch(StackActions.replace('Ummah'));
+        return;
+      }
+
       nav.dispatch(StackActions.replace(target));
     },
     [currentRouteName, location],
@@ -194,11 +206,24 @@ function App() {
                 }}
               </Stack.Screen>
               <Stack.Screen name="Quran" component={QuranScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="QuranReader" component={QuranReaderScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="MosqueFinder" component={MosqueFinderScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="Ummah" component={UmmahScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="CreateGroup" component={CreateGroupScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="GroupDetail" component={GroupDetailScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="Counter" component={CounterScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="Completion" component={CompletionScreen} options={{ headerShown: false }} />
               <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
               <Stack.Screen name="TahajjudSettings" component={TahajjudSettingsScreen} options={{ headerShown: false }} />
             </Stack.Navigator>
           </NavigationContainer>
-          {location && currentRouteName && currentRouteName !== 'LocationSearch' && (
+          {location && 
+           currentRouteName && 
+           currentRouteName !== 'LocationSearch' && 
+           currentRouteName !== 'MosqueFinder' &&
+           currentRouteName !== 'GroupDetail' &&
+           currentRouteName !== 'Counter' &&
+           currentRouteName !== 'Completion' && (
             <BottomNavBar
               location={location}
               currentRoute={currentRouteName}

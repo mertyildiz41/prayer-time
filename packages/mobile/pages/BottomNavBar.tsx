@@ -8,7 +8,7 @@ import { Location } from '@prayer-time/shared';
 
 import { useTranslation } from '../i18n';
 
-type IconName = 'home' | 'explore' | 'menu-book' | 'settings';
+type IconName = 'home' | 'explore' | 'menu-book' | 'settings' | 'group';
 
 type BottomNavBarProps = {
   location?: Location;
@@ -17,8 +17,8 @@ type BottomNavBarProps = {
 };
 
 type NavItem = {
-  key: 'home' | 'qibla' | 'quran' | 'settings';
-  labelKey: 'navigation.home' | 'navigation.qibla' | 'navigation.quran' | 'navigation.settings';
+  key: 'home' | 'qibla' | 'quran' | 'ummah' | 'settings';
+  labelKey: 'navigation.home' | 'navigation.qibla' | 'navigation.quran' | 'navigation.ummah' | 'navigation.settings';
   icon: IconName;
   target?: string;
   requiresLocation?: boolean;
@@ -28,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'home', labelKey: 'navigation.home', icon: 'home', target: 'PrayerTime', requiresLocation: true },
   { key: 'qibla', labelKey: 'navigation.qibla', icon: 'explore', target: 'Qibla', requiresLocation: true },
   { key: 'quran', labelKey: 'navigation.quran', icon: 'menu-book', target: 'Quran' },
+  { key: 'ummah', labelKey: 'navigation.ummah', icon: 'group', target: 'Ummah' },
   { key: 'settings', labelKey: 'navigation.settings', icon: 'settings', target: 'Settings' },
 ];
 
