@@ -7,3 +7,6 @@ packages/shared/node_modules
 /packages/mobile/ios/Pods
 package-lock.json
 yarn.lock
+/packages/mobile/android/.gradle
+/packages/mobile/android/.idea
+/packages/mobile/android/build

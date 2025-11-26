@@ -223,7 +223,7 @@ const LocationSearchScreen = ({ onLocationSelect, initialCountries = [] }: Locat
           <ActivityIndicator size="large" color="#3b82f6" style={styles.inlineLoader} />
         )}
         {errorKey && <Text style={styles.errorText}>{t(errorKey)}</Text>}
-        {!loading && !error && (
+        {!loading && !errorKey && (
           <>
             {step === 'country' && (
               <FlatList<ICountry>
