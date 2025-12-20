@@ -4,7 +4,7 @@ pluginManagement {
         google()
         gradlePluginPortal()
     }
-    includeBuild("../node_modules/@react-native/gradle-plugin")
+    includeBuild("../../../node_modules/@react-native/gradle-plugin")
 }
 
 // Disable Foojay toolchain resolver to avoid compatibility issues

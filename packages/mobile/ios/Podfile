@@ -27,6 +27,10 @@ end
 target 'PrayerTime' do
   config = use_native_modules!
 
+  # ReactPush dependencies
+  pod 'RNFS', :path => '../node_modules/react-native-fs'
+  pod 'RNZipArchive', :path => '../node_modules/react-native-zip-archive'
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.

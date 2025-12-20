@@ -10,3 +10,6 @@ yarn.lock
 /packages/mobile/android/.gradle
 /packages/mobile/android/.idea
 /packages/mobile/android/build
+*DS_Store
+/packages/mobile/android/app/.cxx
+/packages/mobile/android/app/build

@@ -8,6 +8,7 @@ module.exports = {
     },
   },
   // Specify the node binary path for builds (useful when using nvm)
-  reactNativePath: './node_modules/react-native',
+  // Use the hoisted react-native from the monorepo root
+  reactNativePath: '../../node_modules/react-native',
 };
 

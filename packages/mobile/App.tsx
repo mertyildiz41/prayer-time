@@ -37,6 +37,7 @@ import {
   resetNotificationScheduleCache,
 } from './notifications/notificationService';
 import { settingsStorage } from './storage/settingsStorage';
+import { syncUpdates } from './services/reactPushService';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -299,6 +300,11 @@ const NotificationBootstrapper = () => {
   );
 
   useEffect(() => {
+    // Check for OTA updates on app start
+    syncUpdates().catch((error) => {
+      console.error('Failed to sync ReactPush updates:', error);
+    });
+
     refreshNotifications().catch((error) => {
       console.error('Failed to ensure prayer notifications on launch.', error);
     });
