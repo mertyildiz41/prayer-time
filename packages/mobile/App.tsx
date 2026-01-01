@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, View } from 'react-native';
+
+import ReactPush from 'react-push-client';
+
 import { NavigationContainer, StackActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Country } from 'country-state-city';
@@ -51,6 +54,39 @@ const BOTTOM_NAV_ROUTES: Array<keyof RootStackParamList> = ['PrayerTime', 'Qibla
 
 function App() {
 
+  const API_KEY = 'tEi7p9zYCCkyx43IH-3gOf_WSr1q5_Guiv5wQFRcgyI';
+  const APP_VERSION = '1.0.0';
+
+  const [reactPush] = React.useState(() => {
+      return new ReactPush({
+          apiKey: API_KEY,
+          appVersion: APP_VERSION,
+          onUpdateAvailable: (update) => {
+              console.log('Update available:', update);
+          },
+          onUpdateDownloaded: (update) => {
+              console.log('Update downloaded:', update);
+          },
+          onError: (error) => {
+              console.error('ReactPush error:', error);
+          },
+          enableCrashReporting: true, // Enable automatic crash reporting
+      });
+  });
+
+  const initializeAndCheck = async () => {
+    try {
+      // Ensure device ID is initialized
+      await reactPush.getDeviceIdAsync();
+      // Then check for updates
+      checkForUpdates();
+    } catch (error) {
+      console.error('Failed to initialize device ID:', error);
+      // Still try to check for updates even if device ID init fails
+      checkForUpdates();
+    }
+  };
+
   const [location, setLocation] = useState<StoredLocation>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentRouteName, setCurrentRouteName] = useState<keyof RootStackParamList | undefined>(undefined);
@@ -68,7 +104,27 @@ function App() {
     }
 
     setIsLoading(false);
+    initializeAndCheck();
   }, []);
+
+  const checkForUpdates = async () => {
+    console.log('Checking for updates...');
+    try {
+      const update = await reactPush.checkForUpdate();
+      if (update) {
+        console.log(`Update available: ${update.label || update.version}`);
+      } else {
+        console.log('You are on the latest version!');
+      }
+    } catch (error) {
+      console.log(`Error: ${error.message}`);
+      // Report check update errors
+      reactPush.reportJavaScriptError(error, {
+        context: 'checkForUpdates',
+      }).catch(err => console.error('Failed to report error:', err));
+    } finally {
+    }
+  };
 
   const handleLocationSelect = useCallback(
     (selectedLocation: LocationParam) => {

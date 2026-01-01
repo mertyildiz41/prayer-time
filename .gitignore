@@ -13,3 +13,5 @@ yarn.lock
 *DS_Store
 /packages/mobile/android/app/.cxx
 /packages/mobile/android/app/build
+/packages/mobile/build
+packages/mobile/.reactpushrc
