@@ -30,6 +30,7 @@ package.json  # Monorepo root
 - Yarn 3.x
 - For iOS development: Xcode (macOS)
 - For Android development: Android Studio
+- For Android development: JDK 17+
 
 ## Quick install (monorepo)
 

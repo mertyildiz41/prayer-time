@@ -5,6 +5,9 @@ const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 const projectRoot = __dirname;
 const projectNodeModules = path.join(projectRoot, 'node_modules');
 
+const defaultConfig = getDefaultConfig(__dirname);
+const { assetExts, sourceExts } = defaultConfig.resolver;
+
 const resolveFromWorkspace = (moduleName) =>
   // Resolve to the real (non-symlinked) node_modules path so Metro keeps a single React instance alive.
   path.join(projectNodeModules, moduleName);
@@ -12,8 +15,20 @@ const resolveFromWorkspace = (moduleName) =>
 const config = {
   projectRoot,
   resetCache: true,
+  transformer: {
+    babelTransformerPath: require.resolve('react-native-svg-transformer'),
+
+    getTransformOptions: async () => ({
+      transform: {
+        experimentalImportSupport: false,
+        inlineRequires: true,
+      },
+    }),
+  },
   resolver: {
     nodeModulesPaths: [projectNodeModules],
+    assetExts: assetExts.filter((ext) => ext !== 'svg'),
+    sourceExts: [...sourceExts, 'svg', 'cjs', 'json'],
     extraNodeModules: {
       react: resolveFromWorkspace('react'),
       'react/jsx-runtime': resolveFromWorkspace('react/jsx-runtime'),

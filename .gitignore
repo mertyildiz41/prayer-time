@@ -15,3 +15,8 @@ yarn.lock
 /packages/mobile/android/app/build
 /packages/mobile/build
 packages/mobile/.reactpushrc
+
+*.DS_Store
+*.log
+*.apk
+*.aab
