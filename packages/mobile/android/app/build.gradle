@@ -9,13 +9,13 @@ apply plugin: "com.facebook.react"
 react {
     /* Folders */
     //   The root of your project, i.e. where "package.json" lives. Default is '../..'
-    root = file("../../")
+    // root = file("../../")
     //   The folder where the react-native NPM package is. Default is ../../node_modules/react-native
-    reactNativeDir = file("../../../../node_modules/react-native")
+    // reactNativeDir = file("../../node_modules/react-native")
     //   The folder where the react-native Codegen package is. Default is ../../node_modules/@react-native/codegen
-    codegenDir = file("../../../../node_modules/@react-native/codegen")
+    // codegenDir = file("../../node_modules/@react-native/codegen")
     //   The cli.js file which is the React Native CLI entrypoint. Default is ../../node_modules/react-native/cli.js
-    cliFile = file("../../../../node_modules/react-native/cli.js")
+    // cliFile = file("../../node_modules/react-native/cli.js")
 
     /* Variants */
     //   The list of variants to that are debuggable. For those we're going to
@@ -105,21 +105,6 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
-}
-
-configurations.all {
-    resolutionStrategy {
-        // Force AndroidX versions to resolve conflicts
-        force 'androidx.core:core:1.15.0'
-        force 'androidx.core:core-ktx:1.15.0'
-    }
-    // Exclude old Android Support Library to avoid duplicate classes with AndroidX
-    exclude group: 'com.android.support', module: 'support-compat'
-    exclude group: 'com.android.support', module: 'support-v4'
-    exclude group: 'com.android.support', module: 'support-annotations'
-    exclude group: 'com.android.support', module: 'support-core-utils'
-    exclude group: 'com.android.support', module: 'support-core-ui'
-    exclude group: 'com.android.support', module: 'support-fragment'
 }
 
 dependencies {

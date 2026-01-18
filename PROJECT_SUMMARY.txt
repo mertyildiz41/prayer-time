@@ -1,1 +1,0 @@
-Prayer Time multi-platform monorepo: README, individual package docs, and setup guides refreshed for public sharing; Apache 2.0 license added.

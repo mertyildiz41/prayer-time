@@ -1,4 +1,5 @@
 module.exports = {
+  root: __dirname,
   project: {
     android: {
       sourceDir: './android',
@@ -7,8 +8,4 @@ module.exports = {
       sourceDir: './ios',
     },
   },
-  // Specify the node binary path for builds (useful when using nvm)
-  // Use the hoisted react-native from the monorepo root
-  reactNativePath: '../../node_modules/react-native',
 };
-

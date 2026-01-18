@@ -7,7 +7,7 @@
   "main": "dist/main.js",
   "homepage": "./",
   "scripts": {
-  "prestart": "yarn --cwd ../shared build",
+    "prestart": "yarn --cwd ../shared build",
     "build:main": "tsc -p tsconfig.main.json",
     "start": "react-scripts start",
     "prebuild": "yarn build:main",
@@ -19,22 +19,22 @@
     "test": "react-scripts test"
   },
   "dependencies": {
-    "@prayer-time/shared": "*",
+    "@prayer-time/shared": "file:../shared",
+    "axios": "^1.6.0",
+    "date-fns": "^2.30.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-router-dom": "^6.16.0",
-    "axios": "^1.6.0",
-    "date-fns": "^2.30.0"
+    "react-router-dom": "^6.16.0"
   },
   "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "concurrently": "^8.2.0",
+    "cross-env": "^7.0.3",
     "electron": "^27.0.0",
     "electron-builder": "^24.6.0",
     "react-scripts": "5.0.1",
-    "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
     "typescript": "^5.2.0",
-    "concurrently": "^8.2.0",
-    "cross-env": "^7.0.3",
     "wait-on": "^7.0.0"
   },
   "build": {

@@ -1,21 +1,6 @@
-pluginManagement {
-    repositories {
-        mavenCentral()
-        google()
-        gradlePluginPortal()
-    }
-    includeBuild("../../../node_modules/@react-native/gradle-plugin")
-}
-
-// Disable Foojay toolchain resolver to avoid compatibility issues
-plugins {
-    id("com.facebook.react.settings")
-    // Don't apply foojay-resolver-convention which causes issues
-}
-
-extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
-    ex.autolinkLibrariesFromCommand()
-}
-
+pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
+plugins { id("com.facebook.react.settings") }
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
 rootProject.name = 'PrayerTime'
 include ':app'
+includeBuild('../node_modules/@react-native/gradle-plugin')
