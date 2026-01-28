@@ -16,7 +16,6 @@ const config = {
   projectRoot,
   resetCache: true,
   transformer: {
-    babelTransformerPath: require.resolve('react-native-svg-transformer'),
 
     getTransformOptions: async () => ({
       transform: {

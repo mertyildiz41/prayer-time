@@ -20,3 +20,4 @@ packages/mobile/.reactpushrc
 *.log
 *.apk
 *.aab
+packages/mobile/ios/.DS_Store
