@@ -13,6 +13,7 @@ const TAHAJJUD_TIME_KEY = 'tahajjudReminderTime';
 const TAHAJJUD_METHOD_KEY = 'tahajjudReminderMethod';
 const TAHAJJUD_CUSTOM_TIME_KEY = 'tahajjudReminderCustomTime';
 const TAHAJJUD_LEAD_KEY = 'tahajjudReminderLeadMinutes';
+const CALCULATION_METHOD_KEY = 'calculationMethod';
 
 const clampLeadMinutes = (value: number): number => {
   if (!Number.isFinite(value)) {
@@ -31,24 +32,24 @@ const clampLeadMinutes = (value: number): number => {
 };
 
 export const settingsStorage = {
-  getLanguage(): string | null {
+  async getLanguage(): Promise<string | null> {
     try {
-      return storage.getString(LANGUAGE_KEY) ?? null;
+      return await storage.getString(LANGUAGE_KEY) ?? null;
     } catch (error) {
       console.error('Failed to read language from storage.', error);
       return null;
     }
   },
-  setLanguage(language: string): void {
+  async setLanguage(language: string): Promise<void> {
     try {
-      storage.set(LANGUAGE_KEY, language);
+      await storage.set(LANGUAGE_KEY, language);
     } catch (error) {
       console.error('Failed to persist language selection.', error);
     }
   },
-  getNotificationsEnabled(): boolean {
+  async getNotificationsEnabled(): Promise<boolean> {
     try {
-      const rawValue = storage.getString(NOTIFICATION_KEY);
+      const rawValue = await storage.getString(NOTIFICATION_KEY);
       if (rawValue == null) {
         return false;
       }
@@ -58,16 +59,16 @@ export const settingsStorage = {
       return false;
     }
   },
-  setNotificationsEnabled(enabled: boolean): void {
+  async setNotificationsEnabled(enabled: boolean): Promise<void> {
     try {
-      storage.set(NOTIFICATION_KEY, String(enabled));
+      await storage.set(NOTIFICATION_KEY, String(enabled));
     } catch (error) {
       console.error('Failed to persist notification preference.', error);
     }
   },
-  getTwentyFourHourPreference(): boolean {
+  async getTwentyFourHourPreference(): Promise<boolean> {
     try {
-      const rawValue = storage.getString(TWENTY_FOUR_KEY);
+      const rawValue = await storage.getString(TWENTY_FOUR_KEY);
       if (rawValue == null) {
         return false;
       }
@@ -77,16 +78,16 @@ export const settingsStorage = {
       return false;
     }
   },
-  setTwentyFourHourPreference(enabled: boolean): void {
+  async setTwentyFourHourPreference(enabled: boolean): Promise<void> {
     try {
-      storage.set(TWENTY_FOUR_KEY, String(enabled));
+      await storage.set(TWENTY_FOUR_KEY, String(enabled));
     } catch (error) {
       console.error('Failed to persist 24-hour clock preference.', error);
     }
   },
-  getNotificationConfig(): NotificationScheduleConfig {
+  async getNotificationConfig(): Promise<NotificationScheduleConfig> {
     try {
-      const rawValue = storage.getString(NOTIFICATION_CONFIG_KEY);
+      const rawValue = await storage.getString(NOTIFICATION_CONFIG_KEY);
       if (!rawValue) {
         return normalizeNotificationConfig();
       }
@@ -98,17 +99,17 @@ export const settingsStorage = {
       return normalizeNotificationConfig();
     }
   },
-  setNotificationConfig(config: NotificationScheduleConfig): void {
+  async setNotificationConfig(config: NotificationScheduleConfig): Promise<void> {
     try {
       const normalized = normalizeNotificationConfig(config);
-      storage.set(NOTIFICATION_CONFIG_KEY, JSON.stringify(normalized));
+      await storage.set(NOTIFICATION_CONFIG_KEY, JSON.stringify(normalized));
     } catch (error) {
       console.error('Failed to persist notification configuration.', error);
     }
   },
-  getTahajjudReminderEnabled(): boolean {
+  async getTahajjudReminderEnabled(): Promise<boolean> {
     try {
-      const rawValue = storage.getString(TAHAJJUD_ENABLED_KEY);
+      const rawValue = await storage.getString(TAHAJJUD_ENABLED_KEY);
       if (rawValue == null) {
         return false;
       }
@@ -118,31 +119,31 @@ export const settingsStorage = {
       return false;
     }
   },
-  setTahajjudReminderEnabled(enabled: boolean): void {
+  async setTahajjudReminderEnabled(enabled: boolean): Promise<void> {
     try {
-      storage.set(TAHAJJUD_ENABLED_KEY, String(enabled));
+      await storage.set(TAHAJJUD_ENABLED_KEY, String(enabled));
     } catch (error) {
       console.error('Failed to persist tahajjud reminder preference.', error);
     }
   },
-  getTahajjudReminderTime(): string | null {
+  async getTahajjudReminderTime(): Promise<string | null> {
     try {
-      return storage.getString(TAHAJJUD_TIME_KEY) ?? null;
+      return await storage.getString(TAHAJJUD_TIME_KEY) ?? null;
     } catch (error) {
       console.error('Failed to read tahajjud reminder time.', error);
       return null;
     }
   },
-  setTahajjudReminderTime(time: string): void {
+  async setTahajjudReminderTime(time: string): Promise<void> {
     try {
-      storage.set(TAHAJJUD_TIME_KEY, time);
+      await storage.set(TAHAJJUD_TIME_KEY, time);
     } catch (error) {
       console.error('Failed to persist tahajjud reminder time.', error);
     }
   },
-  getTahajjudReminderMethod(): 'custom' | 'lastThird' | 'middle' {
+  async getTahajjudReminderMethod(): Promise<'custom' | 'lastThird' | 'middle'> {
     try {
-      const rawValue = storage.getString(TAHAJJUD_METHOD_KEY);
+      const rawValue = await storage.getString(TAHAJJUD_METHOD_KEY);
       if (rawValue === 'lastThird' || rawValue === 'middle' || rawValue === 'custom') {
         return rawValue;
       }
@@ -152,36 +153,36 @@ export const settingsStorage = {
       return 'custom';
     }
   },
-  setTahajjudReminderMethod(method: 'custom' | 'lastThird' | 'middle'): void {
+  async setTahajjudReminderMethod(method: 'custom' | 'lastThird' | 'middle'): Promise<void> {
     try {
-      storage.set(TAHAJJUD_METHOD_KEY, method);
+      await storage.set(TAHAJJUD_METHOD_KEY, method);
     } catch (error) {
       console.error('Failed to persist tahajjud reminder method.', error);
     }
   },
-  getTahajjudReminderCustomTime(): string | null {
+  async getTahajjudReminderCustomTime(): Promise<string | null> {
     try {
-      const stored = storage.getString(TAHAJJUD_CUSTOM_TIME_KEY);
+      const stored = await storage.getString(TAHAJJUD_CUSTOM_TIME_KEY);
       if (stored) {
         return stored;
       }
-      const legacy = storage.getString(TAHAJJUD_TIME_KEY);
+      const legacy = await storage.getString(TAHAJJUD_TIME_KEY);
       return legacy ?? null;
     } catch (error) {
       console.error('Failed to read tahajjud custom reminder time.', error);
       return null;
     }
   },
-  setTahajjudReminderCustomTime(time: string): void {
+  async setTahajjudReminderCustomTime(time: string): Promise<void> {
     try {
-      storage.set(TAHAJJUD_CUSTOM_TIME_KEY, time);
+      await storage.set(TAHAJJUD_CUSTOM_TIME_KEY, time);
     } catch (error) {
       console.error('Failed to persist tahajjud custom reminder time.', error);
     }
   },
-  getTahajjudReminderLeadMinutes(): number {
+  async getTahajjudReminderLeadMinutes(): Promise<number> {
     try {
-      const rawValue = storage.getString(TAHAJJUD_LEAD_KEY);
+      const rawValue = await storage.getString(TAHAJJUD_LEAD_KEY);
       if (rawValue == null) {
         return 0;
       }
@@ -197,12 +198,27 @@ export const settingsStorage = {
       return 0;
     }
   },
-  setTahajjudReminderLeadMinutes(minutes: number): void {
+  async setTahajjudReminderLeadMinutes(minutes: number): Promise<void> {
     try {
       const clamped = clampLeadMinutes(minutes);
-      storage.set(TAHAJJUD_LEAD_KEY, String(clamped));
+      await storage.set(TAHAJJUD_LEAD_KEY, String(clamped));
     } catch (error) {
       console.error('Failed to persist tahajjud reminder lead minutes.', error);
+    }
+  },
+  async getCalculationMethod(): Promise<string | null> {
+    try {
+      return await storage.getString(CALCULATION_METHOD_KEY) ?? null;
+    } catch (error) {
+      console.error('Failed to read calculation method from storage.', error);
+      return null;
+    }
+  },
+  async setCalculationMethod(method: string): Promise<void> {
+    try {
+      await storage.set(CALCULATION_METHOD_KEY, method);
+    } catch (error) {
+      console.error('Failed to persist calculation method.', error);
     }
   },
 };

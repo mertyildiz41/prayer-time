@@ -150,14 +150,15 @@ const MosqueFinderScreen: React.FC<MosqueFinderScreenProps> = ({ navigation }) =
   const listTranslateYRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
-    const storedLocation = locationStorage.get();
-    setLocation(storedLocation);
+    const loadLocation = async () => {
+      const storedLocation = await locationStorage.get();
+      setLocation(storedLocation);
 
-    // Set initial map region based on user location
-    if (storedLocation) {
-      const region = {
-        latitude: storedLocation.latitude,
-        longitude: storedLocation.longitude,
+      // Set initial map region based on user location
+      if (storedLocation) {
+        const region = {
+          latitude: storedLocation.latitude,
+          longitude: storedLocation.longitude,
         latitudeDelta: 0.1,
         longitudeDelta: 0.1,
       };
@@ -282,6 +283,7 @@ const MosqueFinderScreen: React.FC<MosqueFinderScreenProps> = ({ navigation }) =
     } else {
       setLoading(false);
     }
+    };
   }, []);
 
   // Filter mosques by search query

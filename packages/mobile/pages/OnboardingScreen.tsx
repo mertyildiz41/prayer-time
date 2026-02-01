@@ -9,11 +9,27 @@ import { useTranslation } from '../i18n';
 import { ensureNotificationPermission } from '../notifications/notificationService';
 import { settingsStorage } from '../storage/settingsStorage';
 
+const CALCULATION_METHODS = [
+  { key: 'Diyanet', label: 'Diyanet (Turkey)' },
+  { key: 'MuslimWorldLeague', label: 'Muslim World League' },
+  { key: 'Karachi', label: 'Karachi' },
+  { key: 'Egyptian', label: 'Egyptian' },
+  { key: 'UmmAlQura', label: 'Umm al-Qura' },
+];
+
 const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
   const [currentStep, setCurrentStep] = useState(0);
+  const [selectedMethod, setSelectedMethod] = useState('Diyanet');
   const { t } = useTranslation();
 
-  const goToNotificationStep = () => setCurrentStep(1);
+  const goToMethodStep = () => setCurrentStep(0);
+  const goToLocationStep = () => setCurrentStep(1);
+  const goToNotificationStep = () => setCurrentStep(2);
+
+  const handleSelectMethod = () => {
+    settingsStorage.setCalculationMethod(selectedMethod);
+    goToLocationStep();
+  };
 
   const handleAllowLocation = async () => {
     try {
@@ -56,6 +72,40 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
     <View style={styles.pagination}>
       <View style={[styles.dot, currentStep === 0 && styles.activeDot]} />
       <View style={[styles.dot, currentStep === 1 && styles.activeDot]} />
+      <View style={[styles.dot, currentStep === 2 && styles.activeDot]} />
+    </View>
+  );
+
+  const renderMethodStep = () => (
+    <View style={styles.slide}>
+      <View style={styles.content}>
+        <Image source={require('../assets/images/location-icon.png')} style={styles.icon} />
+        <Text style={styles.title}>Select Calculation Method</Text>
+        <Text style={styles.description}>
+          Choose how prayer times are calculated. For Turkey, select Diyanet.
+        </Text>
+        {CALCULATION_METHODS.map((method) => (
+          <TouchableOpacity
+            key={method.key}
+            style={{
+              backgroundColor: selectedMethod === method.key ? '#3b82f6' : '#1e293b',
+              borderRadius: 20,
+              paddingVertical: 12,
+              paddingHorizontal: 24,
+              marginVertical: 6,
+              alignItems: 'center',
+            }}
+            onPress={() => setSelectedMethod(method.key)}
+          >
+            <Text style={{ color: '#fff', fontWeight: selectedMethod === method.key ? 'bold' : 'normal' }}>{method.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.button} onPress={handleSelectMethod}>
+          <Text style={styles.buttonText}>Continue</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -104,7 +154,11 @@ const OnboardingScreen = ({ onComplete }: { onComplete: () => void }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {currentStep === 0 ? renderLocationStep() : renderNotificationStep()}
+      {currentStep === 0
+        ? renderMethodStep()
+        : currentStep === 1
+        ? renderLocationStep()
+        : renderNotificationStep()}
       {renderPagination()}
     </SafeAreaView>
   );

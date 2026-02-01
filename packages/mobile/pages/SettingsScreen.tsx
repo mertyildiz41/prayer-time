@@ -88,6 +88,8 @@ const SettingsScreen = () => {
   const [tahajjudTime, setTahajjudTime] = useState<string | null>(() => settingsStorage.getTahajjudReminderTime());
   const [tahajjudMethod, setTahajjudMethod] = useState<'custom' | 'lastThird' | 'middle'>(() => settingsStorage.getTahajjudReminderMethod());
   const [tahajjudLeadMinutes, setTahajjudLeadMinutes] = useState<number>(() => settingsStorage.getTahajjudReminderLeadMinutes());
+  const [calculationMethod, setCalculationMethod] = useState<string>(() => settingsStorage.getCalculationMethod() || 'Diyanet');
+  const [calculationMethodMenuOpen, setCalculationMethodMenuOpen] = useState(false);
 
   const translatePrayerName = useCallback(
     (name: string) => {
@@ -109,6 +111,14 @@ const SettingsScreen = () => {
 
   const languageOptions = useMemo(() => SUPPORTED_LANGUAGES, []);
 
+  const calculationMethodOptions = useMemo(() => [
+    { key: 'Diyanet', label: 'Diyanet (Turkey)' },
+    { key: 'MuslimWorldLeague', label: 'Muslim World League' },
+    { key: 'Karachi', label: 'Karachi' },
+    { key: 'Egyptian', label: 'Egyptian' },
+    { key: 'UmmAlQura', label: 'Umm al-Qura' },
+  ], []);
+
   useEffect(() => {
     setBeforeMinutesInput(String(notificationConfig.minutesBefore));
   }, [notificationConfig.minutesBefore]);
@@ -120,7 +130,7 @@ const SettingsScreen = () => {
   const schedulePrayerNotifications = useCallback(
     async (configOverride, options?: { force?: boolean }) => {
       const effectiveConfig = configOverride ?? notificationConfig;
-      const storedLocation = locationStorage.get();
+      const storedLocation = await locationStorage.get();
       if (!storedLocation) {
         Alert.alert(
           t('settings.location.title'),
@@ -326,6 +336,20 @@ const SettingsScreen = () => {
       setLanguageMenuOpen(false);
     },
     [language, setLanguage],
+  );
+
+  const handleCalculationMethodChange = useCallback(
+    (method: string) => {
+      if (method === calculationMethod) {
+        setCalculationMethodMenuOpen(false);
+        return;
+      }
+
+      setCalculationMethod(method);
+      settingsStorage.setCalculationMethod(method);
+      setCalculationMethodMenuOpen(false);
+    },
+    [calculationMethod],
   );
 
   const formatTahajjudTime = useCallback(
@@ -694,6 +718,47 @@ const SettingsScreen = () => {
       </View>
 
       {renderSectionHeader(t('settings.section.prayerTime'))}
+      <View style={styles.languageCard}>
+        <Text style={styles.rowTitle}>Calculation Method</Text>
+        <Text style={styles.rowSubtitle}>Choose how prayer times are calculated</Text>
+        <View style={styles.dropdownWrapper}>
+          <TouchableOpacity
+            style={styles.dropdownControl}
+            activeOpacity={0.8}
+            onPress={() => setCalculationMethodMenuOpen((prev) => !prev)}
+          >
+            <Text style={styles.dropdownValue}>
+              {calculationMethodOptions.find(option => option.key === calculationMethod)?.label || calculationMethod}
+            </Text>
+            <Icon
+              name={calculationMethodMenuOpen ? 'expand-less' : 'expand-more'}
+              size={20}
+              color="#94a3b8"
+            />
+          </TouchableOpacity>
+          {calculationMethodMenuOpen && (
+            <View style={styles.dropdownMenu}>
+              {calculationMethodOptions.map((option) => {
+                const isActive = option.key === calculationMethod;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[styles.dropdownItem, isActive && styles.dropdownItemActive]}
+                    activeOpacity={0.8}
+                    onPress={() => handleCalculationMethodChange(option.key)}
+                  >
+                    <Text style={[styles.dropdownItemText, isActive && styles.dropdownItemTextActive]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+        <Text style={styles.rowSubtitle}>Changes take effect when you return to the prayer times screen.</Text>
+      </View>
+
       <View style={styles.row}>
         <View style={styles.rowText}>
           <Text style={styles.rowTitle}>{t('settings.prayerTime.twentyFourHour.title')}</Text>

@@ -16,9 +16,9 @@ export const quranStorage = {
   /**
    * Save the reading position for a specific surah
    */
-  saveReadingPosition(surahNumber: number, scrollY: number): void {
+  async saveReadingPosition(surahNumber: number, scrollY: number): Promise<void> {
     try {
-      const rawValue = storage.getString(READING_POSITION_KEY);
+      const rawValue = await storage.getString(READING_POSITION_KEY);
       let positions: ReadingPositions = {};
       
       if (rawValue) {
@@ -36,7 +36,7 @@ export const quranStorage = {
         timestamp: Date.now(),
       };
       
-      storage.set(READING_POSITION_KEY, JSON.stringify(positions));
+      await storage.set(READING_POSITION_KEY, JSON.stringify(positions));
     } catch (error) {
       console.error('Failed to save Quran reading position.', error);
     }
@@ -45,9 +45,9 @@ export const quranStorage = {
   /**
    * Get the saved reading position for a specific surah
    */
-  getReadingPosition(surahNumber: number): number | null {
+  async getReadingPosition(surahNumber: number): Promise<number | null> {
     try {
-      const rawValue = storage.getString(READING_POSITION_KEY);
+      const rawValue = await storage.getString(READING_POSITION_KEY);
       if (!rawValue) {
         return null;
       }
@@ -69,9 +69,9 @@ export const quranStorage = {
   /**
    * Clear the reading position for a specific surah
    */
-  clearReadingPosition(surahNumber: number): void {
+  async clearReadingPosition(surahNumber: number): Promise<void> {
     try {
-      const rawValue = storage.getString(READING_POSITION_KEY);
+      const rawValue = await storage.getString(READING_POSITION_KEY);
       if (!rawValue) {
         return;
       }
@@ -79,7 +79,7 @@ export const quranStorage = {
       const positions: ReadingPositions = JSON.parse(rawValue);
       delete positions[surahNumber];
       
-      storage.set(READING_POSITION_KEY, JSON.stringify(positions));
+      await storage.set(READING_POSITION_KEY, JSON.stringify(positions));
     } catch (error) {
       console.error('Failed to clear Quran reading position.', error);
     }
@@ -88,9 +88,9 @@ export const quranStorage = {
   /**
    * Clear all reading positions
    */
-  clearAllReadingPositions(): void {
+  async clearAllReadingPositions(): Promise<void> {
     try {
-      storage.delete(READING_POSITION_KEY);
+      await storage.delete(READING_POSITION_KEY);
     } catch (error) {
       console.error('Failed to clear all Quran reading positions.', error);
     }

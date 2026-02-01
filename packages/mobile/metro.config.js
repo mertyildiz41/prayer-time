@@ -15,6 +15,7 @@ const resolveFromWorkspace = (moduleName) =>
 const config = {
   projectRoot,
   resetCache: true,
+  watchFolders: [path.resolve(__dirname, '../shared')],
   transformer: {
 
     getTransformOptions: async () => ({
@@ -33,6 +34,8 @@ const config = {
       'react/jsx-runtime': resolveFromWorkspace('react/jsx-runtime'),
       'react-dom': resolveFromWorkspace('react-dom'),
       'react-native': resolveFromWorkspace('react-native'),
+      '@prayer-time/shared': path.resolve(__dirname, '../shared'),
+      'events': require.resolve('events'),
     },
     unstable_enableSymlinks: true,
   },

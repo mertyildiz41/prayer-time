@@ -4,6 +4,7 @@
   "description": "Shared utilities, types, and business logic for Prayer Time",
   "license": "Apache-2.0",
   "private": true,
+  "files": ["dist"],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

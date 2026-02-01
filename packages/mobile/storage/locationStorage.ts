@@ -7,9 +7,9 @@ const LOCATION_KEY = 'userLocation';
 type StoredLocation = Location;
 
 export const locationStorage = {
-  get(): StoredLocation | null {
+  async get(): Promise<StoredLocation | null> {
     try {
-      const rawValue = storage.getString(LOCATION_KEY);
+      const rawValue = await storage.getString(LOCATION_KEY);
 
       if (!rawValue) {
         return null;
@@ -21,10 +21,10 @@ export const locationStorage = {
       return null;
     }
   },
-  set(location: StoredLocation): void {
-    storage.set(LOCATION_KEY, JSON.stringify(location));
+  async set(location: StoredLocation): Promise<void> {
+    await storage.set(LOCATION_KEY, JSON.stringify(location));
   },
-  clear(): void {
-    storage.remove(LOCATION_KEY);
+  async clear(): Promise<void> {
+    await storage.delete(LOCATION_KEY);
   },
 };

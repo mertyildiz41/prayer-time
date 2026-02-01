@@ -53,11 +53,11 @@ const ensureValidTime = (time: string | null | undefined, fallback: string): str
   return fallback;
 };
 
-const resolveReminderTime = (
+const resolveReminderTime = async (
   method: TahajjudReminderMethod,
   locationAvailable: boolean,
   args: { customTime: string; storedTime: string | null },
-): string => {
+): Promise<string> => {
   if (method === 'custom') {
     return ensureValidTime(args.customTime, args.storedTime ?? '02:30');
   }
@@ -66,7 +66,7 @@ const resolveReminderTime = (
     return ensureValidTime(args.storedTime, args.customTime);
   }
 
-  const location = locationStorage.get();
+  const location = await locationStorage.get();
   if (!location) {
     return ensureValidTime(args.storedTime, args.customTime);
   }
@@ -84,28 +84,45 @@ const resolveReminderTime = (
 const TahajjudSettingsScreen = () => {
   const navigation = useNavigation();
   const { t } = useTranslation();
-  const location = locationStorage.get();
-  const notificationsEnabled = settingsStorage.getNotificationsEnabled();
-  const twentyFourHourClock = settingsStorage.getTwentyFourHourPreference();
+  const [location, setLocation] = useState(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [twentyFourHourClock, setTwentyFourHourClock] = useState(false);
 
-  const persistedEnabled = settingsStorage.getTahajjudReminderEnabled();
-  const persistedMethod = settingsStorage.getTahajjudReminderMethod();
-  const persistedTime = settingsStorage.getTahajjudReminderTime();
-  const persistedCustomTime = settingsStorage.getTahajjudReminderCustomTime() ?? persistedTime ?? '02:30';
-  const persistedLead = settingsStorage.getTahajjudReminderLeadMinutes();
-
-  const [enabled, setEnabled] = useState<boolean>(persistedEnabled);
-  const [method, setMethod] = useState<TahajjudReminderMethod>(persistedMethod);
-  const [customTime, setCustomTime] = useState<string>(ensureValidTime(persistedCustomTime, '02:30'));
-  const [reminderTime, setReminderTime] = useState<string>(() =>
-    resolveReminderTime(persistedMethod, Boolean(location), {
-      customTime: ensureValidTime(persistedCustomTime, '02:30'),
-      storedTime: persistedTime,
-    }),
-  );
-  const [leadMinutes, setLeadMinutes] = useState<number>(persistedLead);
+  const [enabled, setEnabled] = useState<boolean>(false);
+  const [method, setMethod] = useState<TahajjudReminderMethod>('custom');
+  const [customTime, setCustomTime] = useState<string>('02:30');
+  const [reminderTime, setReminderTime] = useState<string>('02:30');
+  const [leadMinutes, setLeadMinutes] = useState<number>(0);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      const location = await locationStorage.get();
+      setLocation(location);
+      const notificationsEnabled = await settingsStorage.getNotificationsEnabled();
+      setNotificationsEnabled(notificationsEnabled);
+      const twentyFourHourClock = await settingsStorage.getTwentyFourHourPreference();
+      setTwentyFourHourClock(twentyFourHourClock);
+
+      const persistedEnabled = await settingsStorage.getTahajjudReminderEnabled();
+      const persistedMethod = await settingsStorage.getTahajjudReminderMethod();
+      const persistedTime = await settingsStorage.getTahajjudReminderTime();
+      const persistedCustomTime = await settingsStorage.getTahajjudReminderCustomTime() ?? persistedTime ?? '02:30';
+      const persistedLead = await settingsStorage.getTahajjudReminderLeadMinutes();
+
+      setEnabled(persistedEnabled);
+      setMethod(persistedMethod);
+      setCustomTime(ensureValidTime(persistedCustomTime, '02:30'));
+      const resolvedTime = await resolveReminderTime(persistedMethod, Boolean(location), {
+        customTime: ensureValidTime(persistedCustomTime, '02:30'),
+        storedTime: persistedTime,
+      });
+      setReminderTime(resolvedTime);
+      setLeadMinutes(persistedLead);
+    };
+    loadSettings();
+  }, []);
 
   const nightWindow = useMemo(() => {
     if (!location) {
@@ -242,14 +259,14 @@ const TahajjudSettingsScreen = () => {
     try {
       if (!enabled) {
         if (reminderTime) {
-          settingsStorage.setTahajjudReminderTime(reminderTime);
+          await settingsStorage.setTahajjudReminderTime(reminderTime);
         }
-        settingsStorage.setTahajjudReminderMethod(method);
-        settingsStorage.setTahajjudReminderLeadMinutes(leadMinutes);
+        await settingsStorage.setTahajjudReminderMethod(method);
+        await settingsStorage.setTahajjudReminderLeadMinutes(leadMinutes);
         if (method === 'custom') {
-          settingsStorage.setTahajjudReminderCustomTime(customTime);
+          await settingsStorage.setTahajjudReminderCustomTime(customTime);
         }
-        settingsStorage.setTahajjudReminderEnabled(false);
+        await settingsStorage.setTahajjudReminderEnabled(false);
         await cancelTahajjudNotification();
         Alert.alert(
           t('settings.notifications.tahajjud.title'),
@@ -273,14 +290,14 @@ const TahajjudSettingsScreen = () => {
       }
 
       if (reminderTime) {
-        settingsStorage.setTahajjudReminderTime(reminderTime);
+        await settingsStorage.setTahajjudReminderTime(reminderTime);
       }
-      settingsStorage.setTahajjudReminderMethod(method);
-      settingsStorage.setTahajjudReminderLeadMinutes(leadMinutes);
+      await settingsStorage.setTahajjudReminderMethod(method);
+      await settingsStorage.setTahajjudReminderLeadMinutes(leadMinutes);
       if (method === 'custom') {
-        settingsStorage.setTahajjudReminderCustomTime(customTime);
+        await settingsStorage.setTahajjudReminderCustomTime(customTime);
       }
-      settingsStorage.setTahajjudReminderEnabled(true);
+      await settingsStorage.setTahajjudReminderEnabled(true);
 
       Alert.alert(
         t('settings.notifications.tahajjud.title'),

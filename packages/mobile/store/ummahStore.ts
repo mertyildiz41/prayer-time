@@ -108,7 +108,7 @@ export const useUmmahStore = create<UmmahStore>((set, get) => ({
   initializeUser: async () => {
     set({ isLoading: true, error: null });
     try {
-      const deviceId = getDeviceId();
+      const deviceId = await getDeviceId();
       console.log('[UmmahStore] Initializing user with device ID:', deviceId);
 
       // Check if user exists

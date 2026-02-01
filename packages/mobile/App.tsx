@@ -97,13 +97,15 @@ function App() {
   const preloadedCountries = useMemo(() => Country.getAllCountries(), []);
 
   useEffect(() => {
-    const storedLocation = locationStorage.get();
-    if (storedLocation) {
-      initializeNotifications();
-      setLocation(storedLocation);
-    }
-
-    setIsLoading(false);
+    const loadLocation = async () => {
+      const storedLocation = await locationStorage.get();
+      if (storedLocation) {
+        //initializeNotifications();
+        setLocation(storedLocation);
+      }
+      setIsLoading(false);
+    };
+    loadLocation();
     initializeAndCheck();
   }, []);
 
@@ -127,9 +129,9 @@ function App() {
   };
 
   const handleLocationSelect = useCallback(
-    (selectedLocation: LocationParam) => {
+    async (selectedLocation: LocationParam) => {
       try {
-        locationStorage.set(selectedLocation);
+        await locationStorage.set(selectedLocation);
         setLocation(selectedLocation);
         setTransitionAnimation('slide_from_right');
         navigationRef.current?.reset({
@@ -301,12 +303,12 @@ const NotificationBootstrapper = () => {
   const refreshNotifications = useCallback(
     async (options?: { force?: boolean }) => {
       try {
-        if (!settingsStorage.getNotificationsEnabled()) {
+        if (!(await settingsStorage.getNotificationsEnabled())) {
           await cancelTahajjudNotification();
           return;
         }
 
-        const storedLocation = locationStorage.get();
+        const storedLocation = await locationStorage.get();
         if (!storedLocation) {
           return;
         }
@@ -335,15 +337,15 @@ const NotificationBootstrapper = () => {
           translator: t,
           translatePrayerName,
           contextKey,
-          config: settingsStorage.getNotificationConfig(),
+          config: await settingsStorage.getNotificationConfig(),
           force: options?.force ?? false,
         });
 
-        const tahajjudEnabled = settingsStorage.getTahajjudReminderEnabled();
-        const tahajjudTime = settingsStorage.getTahajjudReminderTime();
+        const tahajjudEnabled = await settingsStorage.getTahajjudReminderEnabled();
+        const tahajjudTime = await settingsStorage.getTahajjudReminderTime();
 
         if (tahajjudEnabled && tahajjudTime) {
-          const leadMinutes = settingsStorage.getTahajjudReminderLeadMinutes();
+          const leadMinutes = await settingsStorage.getTahajjudReminderLeadMinutes();
           await scheduleTahajjudNotification({ translator: t, time: tahajjudTime, leadMinutes });
         } else {
           await cancelTahajjudNotification();

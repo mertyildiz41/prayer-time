@@ -1,8 +1,7 @@
 // @ts-nocheck
 
-import { createMMKV } from 'react-native-mmkv';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const storage = createMMKV({ id: 'device-storage' });
 const DEVICE_ID_KEY = 'device_id';
 
 /**
@@ -20,12 +19,12 @@ function generateUUID(): string {
  * Get or create device ID
  * Generates a unique device ID and stores it locally
  */
-export function getDeviceId(): string {
-  let deviceId = storage.getString(DEVICE_ID_KEY);
+export async function getDeviceId(): Promise<string> {
+  let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
   
   if (!deviceId) {
     deviceId = generateUUID();
-    storage.set(DEVICE_ID_KEY, deviceId);
+    await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
   }
   
   return deviceId;
@@ -34,7 +33,7 @@ export function getDeviceId(): string {
 /**
  * Reset device ID (for testing purposes)
  */
-export function resetDeviceId(): void {
-  storage.delete(DEVICE_ID_KEY);
+export async function resetDeviceId(): Promise<void> {
+  await AsyncStorage.removeItem(DEVICE_ID_KEY);
 }
 

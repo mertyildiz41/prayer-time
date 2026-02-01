@@ -77,15 +77,14 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
   const [countdown, setCountdown] = useState('00:00:00');
   const { t } = useTranslation();
   const { language } = useLanguage();
-  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
-    () => settingsStorage.getNotificationsEnabled(),
-  );
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(false);
   const [notificationConfigVersion, setNotificationConfigVersion] = useState(0);
   const lastScheduleKeyRef = useRef<string | null>(null);
-  const [tahajjudEnabled, setTahajjudEnabled] = useState<boolean>(() => settingsStorage.getTahajjudReminderEnabled());
-  const [tahajjudTime, setTahajjudTime] = useState<string | null>(() => settingsStorage.getTahajjudReminderTime());
-  const [tahajjudLeadMinutes, setTahajjudLeadMinutes] = useState<number>(() => settingsStorage.getTahajjudReminderLeadMinutes());
-  const [twentyFourHourClock, setTwentyFourHourClock] = useState<boolean>(() => settingsStorage.getTwentyFourHourPreference());
+  const [tahajjudEnabled, setTahajjudEnabled] = useState<boolean>(false);
+  const [tahajjudTime, setTahajjudTime] = useState<string | null>(null);
+  const [tahajjudLeadMinutes, setTahajjudLeadMinutes] = useState<number>(0);
+  const [twentyFourHourClock, setTwentyFourHourClock] = useState<boolean>(false);
+  const [calculationMethod, setCalculationMethod] = useState<string>('Diyanet');
 
   const translatePrayerName = useCallback(
     (name: PrayerTime['name']) => {
@@ -121,13 +120,17 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
 
   useFocusEffect(
     useCallback(() => {
-      setNotificationsEnabled(settingsStorage.getNotificationsEnabled());
-      setNotificationConfigVersion((prev) => prev + 1);
-      setTahajjudEnabled(settingsStorage.getTahajjudReminderEnabled());
-      setTahajjudTime(settingsStorage.getTahajjudReminderTime());
-      setTahajjudLeadMinutes(settingsStorage.getTahajjudReminderLeadMinutes());
-      setTwentyFourHourClock(settingsStorage.getTwentyFourHourPreference());
-      lastScheduleKeyRef.current = null;
+      const loadSettings = async () => {
+        setNotificationsEnabled(await settingsStorage.getNotificationsEnabled());
+        setNotificationConfigVersion((prev) => prev + 1);
+        setTahajjudEnabled(await settingsStorage.getTahajjudReminderEnabled());
+        setTahajjudTime(await settingsStorage.getTahajjudReminderTime());
+        setTahajjudLeadMinutes(await settingsStorage.getTahajjudReminderLeadMinutes());
+        setTwentyFourHourClock(await settingsStorage.getTwentyFourHourPreference());
+        setCalculationMethod(await settingsStorage.getCalculationMethod() || 'Diyanet');
+        lastScheduleKeyRef.current = null;
+      };
+      loadSettings();
     }, []),
   );
 
@@ -137,7 +140,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
       const times = PrayerTimeCalculator.calculatePrayerTimes(
         new Date(),
         location,
-        'Karachi', // TODO: allow user to choose a calculation method
+        calculationMethod,
       );
       setPrayerTimes(times);
       setNextPrayer(PrayerTimeCalculator.getNextPrayerTime(times.prayers));
@@ -148,7 +151,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
     } finally {
       setLoading(false);
     }
-  }, [location]);
+  }, [location, calculationMethod]);
 
   useEffect(() => {
     void loadPrayerTimes();
@@ -189,7 +192,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
       location,
       startDate: new Date(),
       days: 30,
-      method: 'Karachi',
+      method: calculationMethod,
     });
 
     if (!schedules.length) {
@@ -231,6 +234,7 @@ function PrayerTimeScreen({ location }: PrayerTimeScreenProps) {
     language,
     location,
     notificationConfigVersion,
+    calculationMethod,
   ]);
 
   useEffect(() => {

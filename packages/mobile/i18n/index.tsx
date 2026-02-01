@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useContext, useMemo, useState } from 'react';
 
 import { settingsStorage } from '../storage/settingsStorage';
 
@@ -35,12 +35,19 @@ const formatTemplate = (template: string, params?: TranslationParams): string =>
 };
 
 export const I18nProvider = ({ children }: { children: React.ReactNode }) => {
-  const [language, setLanguageState] = useState<LanguageCode>(() => {
-    const stored = settingsStorage.getLanguage();
-    return isLanguageCode(stored) ? stored : DEFAULT_LANGUAGE;
-  });
+  const [language, setLanguageState] = useState<LanguageCode>(DEFAULT_LANGUAGE);
 
-  const setLanguage = useCallback((nextLanguage: LanguageCode) => {
+  useEffect(() => {
+    const loadLanguage = async () => {
+      const stored = await settingsStorage.getLanguage();
+      if (isLanguageCode(stored)) {
+        setLanguageState(stored);
+      }
+    };
+    loadLanguage();
+  }, []);
+
+  const setLanguage = useCallback(async (nextLanguage: LanguageCode) => {
     setLanguageState((current) => {
       if (current === nextLanguage) {
         return current;
