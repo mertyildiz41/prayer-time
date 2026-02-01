@@ -21,3 +21,6 @@ packages/mobile/.reactpushrc
 *.apk
 *.aab
 packages/mobile/ios/.DS_Store
+/packages/desktop/build
+/packages/desktop/dist
+/packages/mobile/ios/build
