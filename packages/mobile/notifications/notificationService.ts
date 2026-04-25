@@ -1,17 +1,21 @@
 // @ts-nocheck
 
 import { Platform } from 'react-native';
-import { Notifications } from 'react-native-notifications';
+import { NotificationAction, NotificationCategory, Notifications } from 'react-native-notifications';
 import {
+  canScheduleExactAlarms,
   checkNotifications,
   requestNotifications,
-  check,
-  request,
-  PERMISSIONS,
   RESULTS,
 } from 'react-native-permissions';
 
 import { PrayerTimeCalculator, type PrayerTime, type Location } from '@prayer-time/shared';
+import { storage } from '../storage/baseStorage';
+import {
+  queuePrayerCheckPrompt,
+  respondToPrayerCheck,
+  type PrayerCheckInRecord,
+} from '../storage/prayerCheckStorage';
 
 import type { TranslationKey } from '../i18n/translations';
 import {
@@ -23,15 +27,32 @@ import {
   type PrayerName,
 } from './notificationConfig';
 
+export {
+  PRAYER_NOTIFICATION_NAMES,
+  normalizeNotificationConfig,
+  buildNotificationConfigKey,
+} from './notificationConfig';
+
 const CHANNEL_ID = 'prayer-reminders';
 const PRAYER_NOTIFICATION_PREFIX = 'prayer-reminder-';
 const TAHAJJUD_NOTIFICATION_ID = `${PRAYER_NOTIFICATION_PREFIX}tahajjud`;
 const MAX_ANDROID_NOTIFICATION_ID = 2147483647;
 const ANDROID_EXACT_ALARM_MIN_SDK = 31;
+const PRAYER_NOTIFICATION_IDS_STORAGE_KEY = 'prayerNotificationIds';
+const PRAYER_CHECK_CATEGORY_ID = 'prayer-check-in';
+const PRAYER_CHECK_YES_ACTION_ID = 'prayer-check-yes';
+const PRAYER_CHECK_NO_ACTION_ID = 'prayer-check-no';
+
+const prayerCheckOpenListeners = new Set<(checkIn: PrayerCheckInRecord) => void>();
 
 let isConfigured = false;
 let lastScheduledKey: string | null = null;
 let activePrayerSchedulingPromise: Promise<boolean> | null = null;
+
+export const resetNotificationScheduleCache = () => {
+  lastScheduledKey = null;
+  activePrayerSchedulingPromise = null;
+};
 
 export type TranslateFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
 export type TranslatePrayerNameFn = (prayerName: PrayerTime['name']) => string;
@@ -43,6 +64,10 @@ type NotificationPayload = {
   message: string;
   date: Date;
   variant: NotificationVariant;
+  prayerName: PrayerName;
+  prayerTime: string;
+  dateKey: string;
+  occurrenceIso: string;
 };
 
 const sanitizeIdComponent = (value: string): string => {
@@ -53,7 +78,7 @@ const sanitizeIdComponent = (value: string): string => {
   const sanitized = value
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
-    .slice(48);
+    .slice(0, 48);
 
   return sanitized.length > 0 ? sanitized : 'x';
 };
@@ -117,39 +142,180 @@ const createChannelIfNeeded = () => {
   }
 };
 
+const createNotificationCategories = () => {
+  try {
+    Notifications.setCategories([
+      new NotificationCategory(PRAYER_CHECK_CATEGORY_ID, [
+        new NotificationAction(PRAYER_CHECK_YES_ACTION_ID, 'foreground', 'Yes', false),
+        new NotificationAction(PRAYER_CHECK_NO_ACTION_ID, 'foreground', 'No', false),
+      ]),
+    ]);
+  } catch (error) {
+    console.error('Failed to configure interactive notification categories.', error);
+  }
+};
+
+const emitPrayerCheckOpen = (checkIn: PrayerCheckInRecord) => {
+  prayerCheckOpenListeners.forEach((listener) => {
+    try {
+      listener(checkIn);
+    } catch (error) {
+      console.error('Failed to notify prayer check open listener.', error);
+    }
+  });
+};
+
+const readNotificationValue = (payload: Record<string, unknown>, key: string) => {
+  const userInfo =
+    payload.userInfo && typeof payload.userInfo === 'object'
+      ? (payload.userInfo as Record<string, unknown>)
+      : null;
+
+  if (userInfo && typeof userInfo[key] !== 'undefined') {
+    return userInfo[key];
+  }
+
+  return payload[key];
+};
+
+const extractPrayerCheckIn = (notification: unknown): PrayerCheckInRecord | null => {
+  const payload =
+    notification && typeof notification === 'object' && 'payload' in (notification as Record<string, unknown>)
+      ? ((notification as { payload?: Record<string, unknown> }).payload ?? {})
+      : notification && typeof notification === 'object'
+        ? (notification as Record<string, unknown>)
+        : null;
+
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const variant = readNotificationValue(payload, 'variant');
+  const prayerName = readNotificationValue(payload, 'prayerName');
+  const prayerTime = readNotificationValue(payload, 'prayerTime');
+  const dateKey = readNotificationValue(payload, 'date');
+  const occurrenceIso = readNotificationValue(payload, 'occurrenceIso');
+  const notifyAtIso = readNotificationValue(payload, 'notifyAtIso');
+  const internalId =
+    readNotificationValue(payload, 'internalId') ??
+    readNotificationValue(payload, 'key') ??
+    readNotificationValue(payload, 'notificationId');
+
+  if (
+    variant !== 'after' ||
+    !PRAYER_NOTIFICATION_NAMES.includes(prayerName as PrayerName) ||
+    typeof prayerTime !== 'string' ||
+    typeof dateKey !== 'string' ||
+    typeof occurrenceIso !== 'string' ||
+    typeof notifyAtIso !== 'string' ||
+    typeof internalId !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: internalId,
+    prayerName: prayerName as PrayerName,
+    prayerTime,
+    date: dateKey,
+    occurrenceIso,
+    notifyAtIso,
+  };
+};
+
+const recordPrayerCheckInIfNeeded = async (notification: unknown) => {
+  const prayerCheckIn = extractPrayerCheckIn(notification);
+  if (!prayerCheckIn) {
+    return;
+  }
+
+  await queuePrayerCheckPrompt(prayerCheckIn);
+};
+
+const handlePrayerCheckInOpen = async (
+  notification: unknown,
+  actionResponse?: { identifier?: string } | null,
+) => {
+  const prayerCheckIn = extractPrayerCheckIn(notification);
+  if (!prayerCheckIn) {
+    return;
+  }
+
+  if (actionResponse?.identifier === PRAYER_CHECK_YES_ACTION_ID) {
+    await respondToPrayerCheck(prayerCheckIn.id, 'yes', prayerCheckIn);
+    return;
+  }
+
+  if (actionResponse?.identifier === PRAYER_CHECK_NO_ACTION_ID) {
+    await respondToPrayerCheck(prayerCheckIn.id, 'no', prayerCheckIn);
+    return;
+  }
+
+  await queuePrayerCheckPrompt(prayerCheckIn);
+  emitPrayerCheckOpen(prayerCheckIn);
+};
+
 export const initializeNotifications = () => {
   if (isConfigured) {
     return;
   }
 
   createChannelIfNeeded();
+  createNotificationCategories();
 
   Notifications.events().registerNotificationReceivedForeground((notification, completion) => {
-    // console.log("Notification received in foreground", notification);
+    void recordPrayerCheckInIfNeeded(notification).catch((error) => {
+      console.error('Failed to record foreground prayer check-in notification.', error);
+    });
     completion({ alert: true, sound: true, badge: false });
   });
 
   Notifications.events().registerNotificationReceivedBackground((notification, completion) => {
-    // console.log("Notification received in background", notification);
+    void recordPrayerCheckInIfNeeded(notification).catch((error) => {
+      console.error('Failed to record background prayer check-in notification.', error);
+    });
     completion({ alert: true, sound: true, badge: false });
   });
 
-  Notifications.events().registerNotificationOpened((notification, completion) => {
-    // console.log("Notification opened", notification);
+  Notifications.events().registerNotificationOpened((notification, completion, actionResponse) => {
+    void handlePrayerCheckInOpen(notification, actionResponse).catch((error) => {
+      console.error('Failed to handle prayer check-in notification open.', error);
+    });
     completion();
   });
+
+  void Notifications.getInitialNotification()
+    .then((notification) => {
+      if (!notification) {
+        return;
+      }
+
+      return handlePrayerCheckInOpen(notification);
+    })
+    .catch((error) => {
+      console.error('Failed to resolve initial prayer check-in notification.', error);
+    });
 
   isConfigured = true;
 };
 
-const checkNotificationAuthorization = async (): Promise<boolean> => {
-  if (Platform.OS === 'ios') {
-    const { status } = await checkNotifications();
-    return status === RESULTS.GRANTED || status === RESULTS.LIMITED;
-  }
+export const subscribeToPrayerCheckOpens = (
+  listener: (checkIn: PrayerCheckInRecord) => void,
+) => {
+  prayerCheckOpenListeners.add(listener);
 
-  const status = await check(PERMISSIONS.ANDROID.POST_NOTIFICATIONS);
-  return status === RESULTS.GRANTED || status === RESULTS.UNAVAILABLE;
+  return () => {
+    prayerCheckOpenListeners.delete(listener);
+  };
+};
+
+const checkNotificationAuthorization = async (): Promise<boolean> => {
+  const { status } = await checkNotifications();
+  return (
+    status === RESULTS.GRANTED ||
+    status === RESULTS.LIMITED ||
+    status === RESULTS.UNAVAILABLE
+  );
 };
 
 const isExactAlarmPermissionRelevant = () => {
@@ -171,8 +337,7 @@ const checkExactAlarmPermission = async (): Promise<boolean> => {
   }
 
   try {
-    const status = await check(PERMISSIONS.ANDROID.SCHEDULE_EXACT_ALARM);
-    return status === RESULTS.GRANTED || status === RESULTS.UNAVAILABLE;
+    return await canScheduleExactAlarms();
   } catch (error) {
     console.error('Failed to check exact alarm permission.', error);
     return false;
@@ -185,17 +350,7 @@ export const ensureExactAlarmPermission = async (): Promise<boolean> => {
   }
 
   try {
-    const status = await check(PERMISSIONS.ANDROID.SCHEDULE_EXACT_ALARM);
-    if (status === RESULTS.GRANTED || status === RESULTS.UNAVAILABLE) {
-      return true;
-    }
-
-    if (status === RESULTS.BLOCKED) {
-      return false;
-    }
-
-    const nextStatus = await request(PERMISSIONS.ANDROID.SCHEDULE_EXACT_ALARM);
-    return nextStatus === RESULTS.GRANTED;
+    return await canScheduleExactAlarms();
   } catch (error) {
     console.error('Failed to request exact alarm permission.', error);
     return false;
@@ -205,7 +360,9 @@ export const ensureExactAlarmPermission = async (): Promise<boolean> => {
 export const ensureNotificationPermission = async (): Promise<boolean> => {
   const alreadyGranted = await checkNotificationAuthorization();
   if (alreadyGranted) {
-    Notifications.registerRemoteNotifications();
+    if (Platform.OS === 'ios') {
+      Notifications.registerRemoteNotifications();
+    }
     return true;
   }
 
@@ -218,9 +375,8 @@ export const ensureNotificationPermission = async (): Promise<boolean> => {
     return false;
   }
 
-  const status = await request(PERMISSIONS.ANDROID.POST_NOTIFICATIONS);
+  const { status } = await requestNotifications(['alert', 'badge', 'sound']);
   if (status === RESULTS.GRANTED || status === RESULTS.UNAVAILABLE) {
-    Notifications.registerRemoteNotifications();
     return true;
   }
   return false;
@@ -269,52 +425,47 @@ const computeNextOccurrenceForTime = (time: string): Date | null => {
   return candidate;
 };
 
-const getPendingNotifications = async () => {
+const readStoredPrayerNotificationIds = async (): Promise<string[]> => {
   try {
-    const scheduled = await Notifications.getScheduledLocalNotifications();
-    return scheduled || [];
+    const raw = await storage.getString(PRAYER_NOTIFICATION_IDS_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .filter((item) => typeof item === 'string' && item.length > 0)
+      .filter((item) => item !== TAHAJJUD_NOTIFICATION_ID);
   } catch (error) {
-    console.error('Failed to fetch pending notifications', error);
+    console.error('Failed to read stored prayer notification ids', error);
     return [];
   }
 };
 
-const getScheduledPrayerNotificationIds = async (): Promise<string[]> => {
-  const ids = new Set<string>();
-
-  const scheduled = await getPendingNotifications();
-
-  scheduled.forEach((notification) => {
-    // Structure of notification might vary.
-    // Usually has 'id', 'userInfo', 'extra', etc.
-
-    // We stored metadata in userInfo.
-    const metadata = notification.userInfo || notification.extra || notification;
-
-    const internalId = metadata.internalId;
-    const notificationId = metadata.notificationId || notification.id;
-
-    if (internalId && typeof internalId === 'string' && internalId.startsWith(PRAYER_NOTIFICATION_PREFIX)) {
-      // It's ours
-      if (String(notificationId) !== TAHAJJUD_NOTIFICATION_ID) {
-        ids.add(String(notificationId));
-      }
-    } else if (notificationId && typeof notificationId === 'string' && notificationId.startsWith(PRAYER_NOTIFICATION_PREFIX)) {
-      // Fallback check
-      if (String(notificationId) !== TAHAJJUD_NOTIFICATION_ID) {
-        ids.add(String(notificationId));
-      }
+const writeStoredPrayerNotificationIds = async (ids: string[]) => {
+  try {
+    if (!ids.length) {
+      await storage.delete(PRAYER_NOTIFICATION_IDS_STORAGE_KEY);
+      return;
     }
-  });
 
-  return Array.from(ids);
+    const unique = Array.from(new Set(ids));
+    await storage.set(PRAYER_NOTIFICATION_IDS_STORAGE_KEY, JSON.stringify(unique));
+  } catch (error) {
+    console.error('Failed to persist prayer notification ids', error);
+  }
 };
 
 export const cancelPrayerNotifications = async () => {
   try {
     console.log('Cancelling prayer notifications');
-    const ids = await getScheduledPrayerNotificationIds();
+    const ids = await readStoredPrayerNotificationIds();
     cancelScheduledIds(ids);
+    await writeStoredPrayerNotificationIds([]);
   } catch (error) {
     console.error('Failed to cancel prayer notifications', error);
   } finally {
@@ -322,8 +473,9 @@ export const cancelPrayerNotifications = async () => {
   }
 };
 
-const schedulePayloads = (payloads: NotificationPayload[]) => {
+const schedulePayloads = (payloads: NotificationPayload[]): string[] => {
   createChannelIfNeeded();
+  const scheduledIds: string[] = [];
 
   try {
     const sorted = [...payloads].sort((first, second) => first.date.getTime() - second.date.getTime());
@@ -350,16 +502,25 @@ const schedulePayloads = (payloads: NotificationPayload[]) => {
         sound: 'default',
         fireDate: payload.date.toISOString(),
         silent: false,
+        ...(payload.variant === 'after' ? { category: PRAYER_CHECK_CATEGORY_ID } : {}),
         userInfo: {
           internalId: payload.key,
           notificationId: payload.notificationId,
           variant: payload.variant,
+          prayerName: payload.prayerName,
+          prayerTime: payload.prayerTime,
+          date: payload.dateKey,
+          occurrenceIso: payload.occurrenceIso,
+          notifyAtIso: payload.date.toISOString(),
         },
       }, numId);
+      scheduledIds.push(payload.notificationId);
     });
   } catch (error) {
     console.error('Failed to schedule notifications', error);
   }
+
+  return scheduledIds;
 };
 
 export type PrayerScheduleDay = {
@@ -406,6 +567,13 @@ const buildPayloadsForDay = ({
     const displayName = translatePrayerName(prayer.name);
 
     const resolveTitle = (variant: NotificationVariant) => {
+      if (variant === 'after') {
+        const translated = translator('notifications.prayerCheckTitle', { prayer: displayName });
+        if (translated !== 'notifications.prayerCheckTitle') {
+          return translated;
+        }
+      }
+
       const key = `notifications.prayerTitle.${variant}` as TranslationKey;
       const translated = translator(key, { prayer: displayName });
       if (translated !== key) {
@@ -416,6 +584,16 @@ const buildPayloadsForDay = ({
     };
 
     const resolveMessage = (variant: NotificationVariant, minutes: number | undefined) => {
+      if (variant === 'after') {
+        const translated = translator('notifications.prayerCheckMessage', {
+          prayer: displayName,
+          minutes: minutes ?? 0,
+        });
+        if (translated !== 'notifications.prayerCheckMessage') {
+          return translated;
+        }
+      }
+
       const key = `notifications.prayerMessage.${variant}` as TranslationKey;
       const params = minutes
         ? { prayer: displayName, minutes }
@@ -436,6 +614,10 @@ const buildPayloadsForDay = ({
         title: resolveTitle('at'),
         message: resolveMessage('at', undefined),
         variant: 'at',
+        prayerName,
+        prayerTime: prayer.time,
+        dateKey: day.date,
+        occurrenceIso: occurrence.toISOString(),
       });
     }
 
@@ -451,6 +633,10 @@ const buildPayloadsForDay = ({
           title: resolveTitle('before'),
           message: resolveMessage('before', minutes),
           variant: 'before',
+          prayerName,
+          prayerTime: prayer.time,
+          dateKey: day.date,
+          occurrenceIso: occurrence.toISOString(),
         });
       }
     }
@@ -467,6 +653,10 @@ const buildPayloadsForDay = ({
           title: resolveTitle('after'),
           message: resolveMessage('after', minutes),
           variant: 'after',
+          prayerName,
+          prayerTime: prayer.time,
+          dateKey: day.date,
+          occurrenceIso: occurrence.toISOString(),
         });
       }
     }
@@ -535,7 +725,8 @@ export const schedulePrayerNotificationsRange = async ({
       return true;
     }
 
-    schedulePayloads(payloads);
+    const scheduledIds = schedulePayloads(payloads);
+    await writeStoredPrayerNotificationIds(scheduledIds);
     lastScheduledKey = compositeKey;
     return true;
   };
@@ -713,29 +904,37 @@ export const generatePrayerSchedules = ({
   days,
   method = 'Karachi',
 }: GeneratePrayerScheduleOptions): PrayerScheduleDay[] => {
-  // Keep existing logic if it was here.
-  // The previous file ended abruptly in view.
-  // Assuming this function was just calling PrayerTimeCalculator.
-  // Since I can't see the original logic, I'll attempt to reconstruct minimal proxy 
-  // or just leave it as is if it wasn't modified.
-  // Wait, I am overwriting the file. I MUST include this function.
+  const latitude = Number(location?.latitude ?? location?.coords?.latitude);
+  const longitude = Number(location?.longitude ?? location?.coords?.longitude);
 
-  // Based on signature:
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || days <= 0) {
+    return [];
+  }
+
+  const normalizedLocation: Location = {
+    latitude,
+    longitude,
+    city: typeof location?.city === 'string' ? location.city : '',
+    country: typeof location?.country === 'string' ? location.country : '',
+    timezone:
+      typeof location?.timezone === 'string' && location.timezone.length > 0
+        ? location.timezone
+        : 'UTC',
+  };
+
   const schedules: PrayerScheduleDay[] = [];
   const date = new Date(startDate);
 
   for (let i = 0; i < days; i++) {
-    const prayers = PrayerTimeCalculator.getPrayerTimes({
-      date,
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
+    const dailyTimes = PrayerTimeCalculator.calculatePrayerTimes(
+      new Date(date),
+      normalizedLocation,
       method,
-    });
+    );
 
-    const dateString = date.toISOString().split('T')[0];
     schedules.push({
-      date: dateString,
-      prayers
+      date: dailyTimes.date,
+      prayers: dailyTimes.prayers,
     });
 
     date.setDate(date.getDate() + 1);

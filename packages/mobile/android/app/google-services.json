@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "745652795751",
+    "project_id": "salah-time-77184",
+    "storage_bucket": "salah-time-77184.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:745652795751:android:e9b80db053b288de9717c2",
+        "android_client_info": {
+          "package_name": "com.uniqtech.prayertime"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrjo64qsG8ck8d5VKqX5uPSJ0N4ihxkek"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

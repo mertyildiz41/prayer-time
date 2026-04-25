@@ -7,90 +7,278 @@ const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
 const shared_1 = require("@prayer-time/shared");
 const MenuBarManager_1 = require("./MenuBarManager");
-let mainWindow;
+const notificationConfig_1 = require("./notificationConfig");
+const tahajjudTime_1 = require("./tahajjudTime");
+const prayerCheckStore_1 = require("./prayerCheckStore");
+let mainWindow = null;
 let menuBarManager = null;
 let menuBarRefreshTimer = null;
 const isDev = !electron_1.app.isPackaged;
-const notificationTimers = new Set();
+const prayerNotificationTimers = new Set();
+let tahajjudTimer = null;
 let notificationsActive = false;
 let notificationSchedule = null;
-const MAX_NOTIFICATION_LEAD_MINUTES = 120;
-const DEFAULT_NOTIFICATION_LEAD_MINUTES = 10;
-const ALL_PRAYER_NAMES = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Sunset', 'Maghrib', 'Isha'];
-const clampLeadMinutes = (value) => Math.min(MAX_NOTIFICATION_LEAD_MINUTES, Math.max(0, Math.round(value)));
-let notificationPreferences = {
-    leadMinutes: DEFAULT_NOTIFICATION_LEAD_MINUTES,
-    enabledPrayers: null,
+let notificationPreferences = (0, notificationConfig_1.normalizeNotificationConfig)();
+let tahajjudPreferences = {
+    enabled: false,
+    method: 'custom',
+    customTime: tahajjudTime_1.DEFAULT_TAHAJJUD_CUSTOM_TIME,
+    leadMinutes: 0,
+    location: null,
+    calculationMethod: 'Diyanet',
 };
-const clearNotificationTimers = () => {
-    notificationTimers.forEach((timer) => clearTimeout(timer));
-    notificationTimers.clear();
+const MAX_TAHAJJUD_LEAD_MINUTES = 120;
+const DEFAULT_LOCATION = {
+    latitude: 41.0082,
+    longitude: 28.9784,
+    city: 'Istanbul',
+    country: 'Türkiye',
+    timezone: 'Europe/Istanbul',
 };
-const getNotificationSchedule = (prayer, leadMinutes, reference = new Date()) => {
-    const leadMs = Math.max(0, leadMinutes) * 60000;
-    let occurrence = shared_1.PrayerTimeCalculator.getUpcomingOccurrence(prayer, reference);
-    let notifyTime = new Date(occurrence.getTime() - leadMs);
+const DEFAULT_METHOD = 'Diyanet';
+const isNotifiablePrayer = (name) => {
+    return notificationConfig_1.NOTIFIABLE_PRAYER_NAMES.includes(name);
+};
+const formatLocalDateKey = (value) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+const buildPrayerCheckInRecord = (prayer, occurrence, notifyAt) => {
+    return {
+        id: `prayer-check-${prayer.name.toLowerCase()}-${occurrence.getTime()}`,
+        prayerName: prayer.name,
+        prayerTime: prayer.time,
+        date: formatLocalDateKey(occurrence),
+        occurrenceIso: occurrence.toISOString(),
+        notifyAtIso: notifyAt.toISOString(),
+    };
+};
+const clampTahajjudLeadMinutes = (value) => {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+    const rounded = Math.round(value);
+    if (rounded < 0) {
+        return 0;
+    }
+    if (rounded > MAX_TAHAJJUD_LEAD_MINUTES) {
+        return MAX_TAHAJJUD_LEAD_MINUTES;
+    }
+    return rounded;
+};
+const clearPrayerNotificationTimers = () => {
+    prayerNotificationTimers.forEach((timer) => clearTimeout(timer));
+    prayerNotificationTimers.clear();
+};
+const clearTahajjudTimer = () => {
+    if (tahajjudTimer) {
+        clearTimeout(tahajjudTimer);
+        tahajjudTimer = null;
+    }
+};
+const sendPrayerCheckStateToWindow = async (targetWindow) => {
+    try {
+        const state = await (0, prayerCheckStore_1.getPrayerCheckState)();
+        if (!targetWindow.isDestroyed() && !targetWindow.webContents.isDestroyed()) {
+            targetWindow.webContents.send('prayer-check-state', state);
+        }
+    }
+    catch (error) {
+        console.error('Failed to send prayer check state to renderer.', error);
+    }
+};
+const broadcastPrayerCheckState = async () => {
+    const windows = electron_1.BrowserWindow.getAllWindows();
+    await Promise.all(windows.map(async (window) => {
+        if (window.isDestroyed() || window.webContents.isDestroyed()) {
+            return;
+        }
+        if (window.webContents.isLoading()) {
+            window.webContents.once('did-finish-load', () => {
+                void sendPrayerCheckStateToWindow(window);
+            });
+            return;
+        }
+        await sendPrayerCheckStateToWindow(window);
+    }));
+};
+const showMainWindow = () => {
+    if (!mainWindow) {
+        createWindow();
+    }
+    const targetWindow = mainWindow;
+    if (!targetWindow) {
+        return null;
+    }
+    if (targetWindow.isMinimized()) {
+        targetWindow.restore();
+    }
+    targetWindow.show();
+    targetWindow.focus();
+    return targetWindow;
+};
+const showDesktopNotification = (title, body, options = {}) => {
+    const notification = new electron_1.Notification({
+        title,
+        body,
+        silent: false,
+        ...(options.prayerCheckIn && process.platform === 'darwin'
+            ? {
+                actions: [
+                    { type: 'button', text: 'Yes' },
+                    { type: 'button', text: 'No' },
+                ],
+                closeButtonText: 'Later',
+            }
+            : {}),
+    });
+    if (options.prayerCheckIn) {
+        notification.on('click', () => {
+            showMainWindow();
+            void broadcastPrayerCheckState();
+        });
+        if (process.platform === 'darwin') {
+            notification.on('action', (_event, index) => {
+                const response = index === 0 ? 'yes' : 'no';
+                void (0, prayerCheckStore_1.respondToPrayerCheck)(options.prayerCheckIn.id, response, options.prayerCheckIn)
+                    .then(() => broadcastPrayerCheckState())
+                    .catch((error) => {
+                    console.error('Failed to handle prayer check notification action.', error);
+                });
+            });
+        }
+    }
+    notification.show();
+};
+const getPrayerNotificationSchedule = (prayer, variant, minutesOffset, reference = new Date()) => {
+    if (variant === 'before') {
+        let occurrence = shared_1.PrayerTimeCalculator.getUpcomingOccurrence(prayer, reference);
+        let notifyTime = new Date(occurrence.getTime() - minutesOffset * 60 * 1000);
+        if (notifyTime.getTime() <= reference.getTime()) {
+            occurrence = shared_1.PrayerTimeCalculator.getUpcomingOccurrence(prayer, new Date(occurrence.getTime() + 60 * 1000));
+            notifyTime = new Date(occurrence.getTime() - minutesOffset * 60 * 1000);
+        }
+        return { notifyTime, occurrence };
+    }
+    let occurrence = shared_1.PrayerTimeCalculator.getOccurrenceForDate(prayer, reference);
+    let notifyTime = variant === 'after'
+        ? new Date(occurrence.getTime() + minutesOffset * 60 * 1000)
+        : new Date(occurrence.getTime());
     if (notifyTime.getTime() <= reference.getTime()) {
-        const afterOccurrence = new Date(occurrence.getTime() + 60000);
-        occurrence = shared_1.PrayerTimeCalculator.getUpcomingOccurrence(prayer, afterOccurrence);
-        notifyTime = new Date(occurrence.getTime() - leadMs);
+        occurrence = shared_1.PrayerTimeCalculator.getUpcomingOccurrence(prayer, reference);
+        notifyTime =
+            variant === 'after'
+                ? new Date(occurrence.getTime() + minutesOffset * 60 * 1000)
+                : new Date(occurrence.getTime());
     }
     return { notifyTime, occurrence };
 };
-const scheduleNotificationForPrayer = (prayer) => {
-    if (!notificationsActive) {
-        return;
+const buildPrayerNotificationCopy = (prayer, variant, minutesOffset) => {
+    if (variant === 'before') {
+        return {
+            title: 'Salah Time',
+            body: `${prayer.name} begins in ${minutesOffset} minute${minutesOffset === 1 ? '' : 's'} at ${prayer.time}.`,
+        };
     }
-    const enabledSet = notificationPreferences.enabledPrayers;
-    if (enabledSet && enabledSet.size === 0) {
-        return;
+    if (variant === 'after') {
+        return {
+            title: 'Salah Time',
+            body: `Did you pray ${prayer.name}? It began ${minutesOffset} minute${minutesOffset === 1 ? '' : 's'} ago at ${prayer.time}.`,
+        };
     }
-    if (enabledSet && !enabledSet.has(prayer.name)) {
-        return;
-    }
+    return {
+        title: 'Salah Time',
+        body: `It is time for ${prayer.name} at ${prayer.time}.`,
+    };
+};
+const schedulePrayerNotificationVariant = (prayer, variant, minutesOffset) => {
     const now = new Date();
-    const { notifyTime } = getNotificationSchedule(prayer, notificationPreferences.leadMinutes, now);
-    const delay = notifyTime.getTime() - now.getTime();
-    const safeDelay = Math.max(1000, delay);
-    const timer = setTimeout(() => {
-        notificationTimers.delete(timer);
+    const { notifyTime, occurrence } = getPrayerNotificationSchedule(prayer, variant, minutesOffset, now);
+    const delay = Math.max(1000, notifyTime.getTime() - now.getTime());
+    const timer = setTimeout(async () => {
+        prayerNotificationTimers.delete(timer);
         if (!notificationsActive || !electron_1.Notification.isSupported()) {
             return;
         }
-        const lead = notificationPreferences.leadMinutes;
-        const leadText = lead > 0 ? `in ${lead} minute${lead === 1 ? '' : 's'} at ${prayer.time}` : `at ${prayer.time}`;
-        const notification = new electron_1.Notification({
-            title: 'Prayer Reminder',
-            body: `${prayer.name} ${leadText}`,
-            silent: false,
-        });
-        notification.show();
-        scheduleNotificationForPrayer(prayer);
-    }, safeDelay);
-    notificationTimers.add(timer);
+        const copy = buildPrayerNotificationCopy(prayer, variant, minutesOffset);
+        if (variant === 'after') {
+            const prayerCheckIn = buildPrayerCheckInRecord(prayer, occurrence, notifyTime);
+            try {
+                await (0, prayerCheckStore_1.queuePrayerCheckPrompt)(prayerCheckIn);
+                await broadcastPrayerCheckState();
+            }
+            catch (error) {
+                console.error('Failed to queue desktop prayer check-in.', error);
+            }
+            showDesktopNotification(copy.title, copy.body, { prayerCheckIn });
+        }
+        else {
+            showDesktopNotification(copy.title, copy.body);
+        }
+        schedulePrayerNotificationVariant(prayer, variant, minutesOffset);
+    }, delay);
+    prayerNotificationTimers.add(timer);
 };
-const refreshNotificationSchedule = (times) => {
+const refreshPrayerNotificationSchedule = (times) => {
     if (typeof times !== 'undefined') {
         notificationSchedule = times ?? null;
     }
-    clearNotificationTimers();
+    clearPrayerNotificationTimers();
     if (!notificationsActive || !notificationSchedule || !electron_1.Notification.isSupported()) {
         return;
     }
-    const enabledSet = notificationPreferences.enabledPrayers;
-    if (enabledSet && enabledSet.size === 0) {
+    notificationSchedule.prayers.forEach((prayer) => {
+        if (!isNotifiablePrayer(prayer.name)) {
+            return;
+        }
+        if (!notificationPreferences.enabledPrayers[prayer.name]) {
+            return;
+        }
+        if (notificationPreferences.sendAtPrayerTime) {
+            schedulePrayerNotificationVariant(prayer, 'at', 0);
+        }
+        if (notificationPreferences.sendBefore && notificationPreferences.minutesBefore > 0) {
+            schedulePrayerNotificationVariant(prayer, 'before', notificationPreferences.minutesBefore);
+        }
+        if (notificationPreferences.sendAfter && notificationPreferences.minutesAfter > 0) {
+            schedulePrayerNotificationVariant(prayer, 'after', notificationPreferences.minutesAfter);
+        }
+    });
+};
+const refreshTahajjudSchedule = () => {
+    clearTahajjudTimer();
+    if (!notificationsActive || !electron_1.Notification.isSupported() || !tahajjudPreferences.enabled) {
         return;
     }
-    notificationSchedule.prayers.forEach((prayer) => scheduleNotificationForPrayer(prayer));
+    const schedule = (0, tahajjudTime_1.computeTahajjudReminderOccurrence)({
+        method: tahajjudPreferences.method,
+        location: tahajjudPreferences.location,
+        customTime: tahajjudPreferences.customTime,
+        leadMinutes: tahajjudPreferences.leadMinutes,
+        calculationMethod: tahajjudPreferences.calculationMethod,
+    });
+    if (!schedule) {
+        return;
+    }
+    const delay = Math.max(1000, schedule.notifyAt.getTime() - Date.now());
+    tahajjudTimer = setTimeout(() => {
+        tahajjudTimer = null;
+        if (!notificationsActive || !electron_1.Notification.isSupported() || !tahajjudPreferences.enabled) {
+            return;
+        }
+        const body = tahajjudPreferences.leadMinutes > 0
+            ? `Tahajjud begins in ${tahajjudPreferences.leadMinutes} minute${tahajjudPreferences.leadMinutes === 1 ? '' : 's'} at ${schedule.time}.`
+            : `It is time for Tahajjud at ${schedule.time}.`;
+        showDesktopNotification('Salah Time', body);
+        refreshTahajjudSchedule();
+    }, delay);
 };
-const DEFAULT_LOCATION = {
-    latitude: 40.7128,
-    longitude: -74.006,
-    city: 'New York',
-    country: 'USA',
-    timezone: 'America/New_York',
+const refreshNotificationSchedule = (times) => {
+    refreshPrayerNotificationSchedule(times);
+    refreshTahajjudSchedule();
 };
-const DEFAULT_METHOD = 'MuslimWorldLeague';
 const calculatePrayerTimes = (date = new Date(), location = DEFAULT_LOCATION, method = DEFAULT_METHOD) => {
     return shared_1.PrayerTimeCalculator.calculatePrayerTimes(date, location, method);
 };
@@ -102,15 +290,7 @@ const ensureMenuBarManager = () => {
         menuBarManager = new MenuBarManager_1.MenuBarManager({
             onShowApp: () => {
                 menuBarManager?.hidePopover();
-                if (!mainWindow) {
-                    createWindow();
-                    return;
-                }
-                if (mainWindow.isMinimized()) {
-                    mainWindow.restore();
-                }
-                mainWindow.show();
-                mainWindow.focus();
+                showMainWindow();
             },
         });
     }
@@ -129,12 +309,18 @@ const createWindow = () => {
     const startUrl = isDev
         ? 'http://localhost:3000'
         : `file://${path_1.default.join(__dirname, '../build/index.html')}`;
-    mainWindow.loadURL(startUrl);
+    const currentWindow = mainWindow;
+    void currentWindow.loadURL(startUrl);
+    currentWindow.webContents.once('did-finish-load', () => {
+        void sendPrayerCheckStateToWindow(currentWindow);
+    });
     if (isDev) {
-        mainWindow.webContents.openDevTools();
+        currentWindow.webContents.openDevTools();
     }
-    mainWindow.on('closed', () => {
-        mainWindow = null;
+    currentWindow.on('closed', () => {
+        if (mainWindow === currentWindow) {
+            mainWindow = null;
+        }
     });
 };
 const bootstrapMenuBar = () => {
@@ -158,7 +344,8 @@ const bootstrapMenuBar = () => {
         refreshNotificationSchedule(times);
     }, oneHour);
 };
-electron_1.app.whenReady().then(() => {
+electron_1.app.whenReady().then(async () => {
+    await (0, prayerCheckStore_1.initializePrayerCheckStore)();
     createWindow();
     bootstrapMenuBar();
 });
@@ -170,19 +357,21 @@ electron_1.app.on('window-all-closed', () => {
 electron_1.app.on('activate', () => {
     if (mainWindow === null) {
         createWindow();
+        return;
     }
+    showMainWindow();
 });
 electron_1.app.on('before-quit', () => {
     if (menuBarRefreshTimer) {
         clearInterval(menuBarRefreshTimer);
         menuBarRefreshTimer = null;
     }
-    clearNotificationTimers();
+    clearPrayerNotificationTimers();
+    clearTahajjudTimer();
     notificationsActive = false;
     menuBarManager?.destroy();
 });
-// IPC handlers
-electron_1.ipcMain.handle('calculate-prayer-times', (event, { date, location, method }) => {
+electron_1.ipcMain.handle('calculate-prayer-times', (_event, { date, location, method }) => {
     const times = calculatePrayerTimes(new Date(date), location, method);
     const manager = ensureMenuBarManager();
     manager?.update(times);
@@ -192,15 +381,7 @@ electron_1.ipcMain.handle('calculate-prayer-times', (event, { date, location, me
 electron_1.ipcMain.on('tray-open-app', () => {
     const manager = ensureMenuBarManager();
     manager?.hidePopover();
-    if (!mainWindow) {
-        createWindow();
-        return;
-    }
-    if (mainWindow.isMinimized()) {
-        mainWindow.restore();
-    }
-    mainWindow.show();
-    mainWindow.focus();
+    showMainWindow();
 });
 electron_1.ipcMain.on('tray-quit-app', () => {
     electron_1.app.quit();
@@ -209,21 +390,20 @@ electron_1.ipcMain.on('tray-hide', () => {
     const manager = ensureMenuBarManager();
     manager?.hidePopover();
 });
+electron_1.ipcMain.on('tray-resize-popover', (_event, height) => {
+    if (typeof height !== 'number' || !Number.isFinite(height)) {
+        return;
+    }
+    const manager = ensureMenuBarManager();
+    manager?.resizePopover(height);
+});
 electron_1.ipcMain.on('tray-manage-notifications', () => {
     const manager = ensureMenuBarManager();
     manager?.hidePopover();
-    if (!mainWindow) {
-        createWindow();
-    }
-    const targetWindow = mainWindow;
+    const targetWindow = showMainWindow();
     if (!targetWindow) {
         return;
     }
-    if (targetWindow.isMinimized()) {
-        targetWindow.restore();
-    }
-    targetWindow.show();
-    targetWindow.focus();
     const sendOpen = () => {
         if (!targetWindow.isDestroyed() && !targetWindow.webContents.isDestroyed()) {
             targetWindow.webContents.send('notifications:open');
@@ -237,31 +417,35 @@ electron_1.ipcMain.on('tray-manage-notifications', () => {
     }
 });
 electron_1.ipcMain.on('notifications-configure', (_event, payload) => {
-    const { enabled, times, preferences } = payload ?? {};
-    notificationsActive = Boolean(enabled);
-    if (preferences) {
-        const rawLead = Number(preferences.leadMinutes);
-        if (Number.isFinite(rawLead)) {
-            notificationPreferences.leadMinutes = clampLeadMinutes(rawLead);
-        }
-        if (Array.isArray(preferences.enabledPrayers)) {
-            if (preferences.enabledPrayers.length === 0) {
-                notificationPreferences.enabledPrayers = new Set();
-            }
-            else {
-                const sanitized = preferences.enabledPrayers.filter((name) => typeof name === 'string' && ALL_PRAYER_NAMES.includes(name));
-                notificationPreferences.enabledPrayers = sanitized.length
-                    ? new Set(sanitized)
-                    : new Set();
-            }
-        }
-        else {
-            notificationPreferences.enabledPrayers = null;
-        }
-    }
-    refreshNotificationSchedule(typeof times !== 'undefined' ? times : undefined);
+    notificationsActive = Boolean(payload?.enabled);
+    notificationPreferences = (0, notificationConfig_1.normalizeNotificationConfig)(payload?.preferences ?? notificationPreferences);
+    const rawTahajjudMethod = payload?.tahajjud?.method;
+    const tahajjudMethod = rawTahajjudMethod === 'custom' ||
+        rawTahajjudMethod === 'middle' ||
+        rawTahajjudMethod === 'lastThird'
+        ? rawTahajjudMethod
+        : tahajjudPreferences.method;
+    tahajjudPreferences = {
+        enabled: Boolean(payload?.tahajjud?.enabled),
+        method: tahajjudMethod,
+        customTime: payload?.tahajjud?.customTime || tahajjudTime_1.DEFAULT_TAHAJJUD_CUSTOM_TIME,
+        leadMinutes: clampTahajjudLeadMinutes(Number(payload?.tahajjud?.leadMinutes ?? tahajjudPreferences.leadMinutes)),
+        location: payload?.tahajjud?.location ?? null,
+        calculationMethod: payload?.tahajjud?.calculationMethod || DEFAULT_METHOD,
+    };
+    refreshNotificationSchedule(typeof payload?.times !== 'undefined' ? payload.times : undefined);
 });
-// Menu
+electron_1.ipcMain.handle('prayer-check-state:get', async () => {
+    return (0, prayerCheckStore_1.getPrayerCheckState)();
+});
+electron_1.ipcMain.handle('prayer-check:respond', async (_event, payload) => {
+    if (typeof payload?.id !== 'string' || (payload.response !== 'yes' && payload.response !== 'no')) {
+        return (0, prayerCheckStore_1.getPrayerCheckState)();
+    }
+    const state = await (0, prayerCheckStore_1.respondToPrayerCheck)(payload.id, payload.response);
+    await broadcastPrayerCheckState();
+    return state;
+});
 const template = [
     {
         label: 'File',

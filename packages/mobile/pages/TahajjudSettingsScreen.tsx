@@ -7,12 +7,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Switch,
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from '@react-native-vector-icons/material-icons';
 import Slider from '@react-native-community/slider';
+import ToggleSwitch from '../components/ToggleSwitch';
 
 import { useTranslation } from '../i18n';
 import { settingsStorage } from '../storage/settingsStorage';
@@ -333,11 +333,11 @@ const TahajjudSettingsScreen = () => {
               <Text style={styles.cardTitle}>{t('tahajjud.enableLabel')}</Text>
               <Text style={styles.cardSubtitle}>{t('settings.notifications.tahajjud.subtitle')}</Text>
             </View>
-            <Switch
+            <ToggleSwitch
               value={enabled}
               onValueChange={handleToggleEnabled}
-              trackColor={{ false: '#1f2937', true: '#2563eb' }}
-              thumbColor={enabled ? '#bfdbfe' : '#e5e7eb'}
+              activeColor="#2563eb"
+              activeThumbColor="#bfdbfe"
             />
           </View>
         </View>
@@ -506,6 +506,7 @@ const styles = StyleSheet.create({
   },
   toggleText: {
     flex: 1,
+    minWidth: 0,
   },
   cardTitle: {
     color: '#f8fafc',

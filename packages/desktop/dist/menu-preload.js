@@ -6,5 +6,6 @@ electron_1.contextBridge.exposeInMainWorld('tray', {
     manageNotifications: () => electron_1.ipcRenderer.send('tray-manage-notifications'),
     quitApp: () => electron_1.ipcRenderer.send('tray-quit-app'),
     hidePopover: () => electron_1.ipcRenderer.send('tray-hide'),
+    resizePopover: (height) => electron_1.ipcRenderer.send('tray-resize-popover', height),
 });
 //# sourceMappingURL=menu-preload.js.map

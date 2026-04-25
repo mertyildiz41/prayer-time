@@ -1,7 +1,7 @@
 {
   "name": "@prayer-time/desktop",
   "version": "1.0.0",
-  "description": "Prayer Time Desktop App - Electron",
+  "description": "Salah Time Desktop App - Electron",
   "license": "Apache-2.0",
   "private": true,
   "main": "dist/main.js",
@@ -38,15 +38,20 @@
     "wait-on": "^7.0.0"
   },
   "build": {
+    "extends": null,
     "appId": "com.prayertime.app",
-    "productName": "Prayer Time",
+    "productName": "Salah Time",
     "files": [
       "dist/**/*",
       "node_modules/**/*",
       "build/**/*"
     ],
     "directories": {
-      "buildResources": "assets"
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "extraMetadata": {
+      "main": "dist/main.js"
     },
     "mac": {
       "target": [

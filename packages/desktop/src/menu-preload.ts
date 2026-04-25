@@ -5,4 +5,5 @@ contextBridge.exposeInMainWorld('tray', {
   manageNotifications: () => ipcRenderer.send('tray-manage-notifications'),
   quitApp: () => ipcRenderer.send('tray-quit-app'),
   hidePopover: () => ipcRenderer.send('tray-hide'),
+  resizePopover: (height: number) => ipcRenderer.send('tray-resize-popover', height),
 });

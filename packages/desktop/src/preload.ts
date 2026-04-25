@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import type { DailyPrayerTimes } from '@prayer-time/shared';
+import type { NotificationScheduleConfig } from './notificationConfig';
+import type { PrayerCheckResponse, PrayerCheckState } from './prayerCheckTypes';
+import type { TahajjudReminderMethod } from './tahajjudTime';
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
@@ -18,6 +21,19 @@ contextBridge.exposeInMainWorld('electron', {
   configureNotifications: (
     enabled: boolean,
     times?: DailyPrayerTimes | null,
-    preferences?: { leadMinutes: number; enabledPrayers?: string[] }
-  ) => ipcRenderer.send('notifications-configure', { enabled, times, preferences }),
+    preferences?: NotificationScheduleConfig,
+    tahajjud?: {
+      enabled: boolean;
+      method: TahajjudReminderMethod;
+      customTime: string;
+      leadMinutes: number;
+      location?: any;
+      calculationMethod?: string;
+    }
+  ) => ipcRenderer.send('notifications-configure', { enabled, times, preferences, tahajjud }),
+  getPrayerCheckState: (): Promise<PrayerCheckState> => ipcRenderer.invoke('prayer-check-state:get'),
+  respondToPrayerCheck: (
+    id: string,
+    response: PrayerCheckResponse
+  ): Promise<PrayerCheckState> => ipcRenderer.invoke('prayer-check:respond', { id, response }),
 });

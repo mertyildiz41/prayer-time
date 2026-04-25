@@ -1,23 +1,27 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  DailyPrayerTimes,
-  Location,
-  PrayerTime,
-  PrayerTimeCalculator,
-} from '@prayer-time/shared';
+import { DailyPrayerTimes, Location, PrayerTime, PrayerTimeCalculator } from '@prayer-time/shared';
 import './App.css';
+import {
+  DEFAULT_NOTIFICATION_CONFIG,
+  MAX_NOTIFICATION_OFFSET_MINUTES,
+  NOTIFIABLE_PRAYER_NAMES,
+  type NotificationScheduleConfig,
+  type NotifiablePrayerName,
+  normalizeNotificationConfig,
+} from './notificationConfig';
+import {
+  DEFAULT_TAHAJJUD_CUSTOM_TIME,
+  type TahajjudPreferences,
+  type TahajjudReminderMethod,
+  computeTahajjudReminderTime,
+} from './tahajjudTime';
+import {
+  createDefaultPrayerCheckState,
+  type PrayerCheckResponse,
+  type PrayerCheckState,
+} from './prayerCheckTypes';
 
 type PrayerName = PrayerTime['name'];
-
-interface NotificationPreferencesPayload {
-  leadMinutes: number;
-  enabledPrayers?: PrayerName[];
-}
-
-interface NotificationPreferencesState {
-  leadMinutes: number;
-  perPrayer: Partial<Record<PrayerName, boolean>>;
-}
 
 interface StoredLocationPayload {
   location: Location;
@@ -30,10 +34,9 @@ interface LocationOption {
   description: string;
   location: Location;
 }
+
 interface ElectronIPC {
-  on: (channel: string, func: (...args: any[]) => void) => () => void;
-  send?: (channel: string, args?: any) => void;
-  invoke?: (channel: string, args?: any) => Promise<any>;
+  on: (channel: string, func: (...args: unknown[]) => void) => () => void;
 }
 
 interface ElectronAPI {
@@ -42,8 +45,18 @@ interface ElectronAPI {
   configureNotifications?: (
     enabled: boolean,
     times?: DailyPrayerTimes | null,
-    preferences?: NotificationPreferencesPayload
+    preferences?: NotificationScheduleConfig,
+    tahajjud?: {
+      enabled: boolean;
+      method: TahajjudReminderMethod;
+      customTime: string;
+      leadMinutes: number;
+      location?: Location | null;
+      calculationMethod?: string;
+    }
   ) => void;
+  getPrayerCheckState?: () => Promise<PrayerCheckState>;
+  respondToPrayerCheck?: (id: string, response: PrayerCheckResponse) => Promise<PrayerCheckState>;
 }
 
 declare global {
@@ -53,15 +66,15 @@ declare global {
 }
 
 const NOTIFICATION_STORAGE_KEY = 'prayer-time-notifications';
-const DEFAULT_CALCULATION_METHOD = 'Muslim World League';
 const NOTIFICATION_SETTINGS_STORAGE_KEY = 'prayer-time-notification-preferences';
 const LOCATION_STORAGE_KEY = 'prayer-time-location';
-const MAX_NOTIFICATION_LEAD_MINUTES = 120;
-const DEFAULT_NOTIFICATION_LEAD_MINUTES = 10;
-const ALL_PRAYER_NAMES: PrayerName[] = ['Fajr', 'Sunrise', 'Dhuhr', 'Asr', 'Sunset', 'Maghrib', 'Isha'];
-const HIDDEN_PRAYER_NAMES: ReadonlySet<PrayerName> = new Set(['Sunset']);
+const CALCULATION_METHOD_STORAGE_KEY = 'prayer-time-calculation-method';
+const TIME_FORMAT_STORAGE_KEY = 'prayer-time-twenty-four-hour';
+const TAHAJJUD_SETTINGS_STORAGE_KEY = 'prayer-time-tahajjud';
+const DEFAULT_CALCULATION_METHOD = 'Diyanet';
 const CLOCK_REFRESH_INTERVAL = 1000;
 const CLOCK_DRIFT_THRESHOLD = 30000;
+const MAX_TAHAJJUD_LEAD_MINUTES = 120;
 
 const LOCATION_OPTIONS: LocationOption[] = [
   {
@@ -114,7 +127,45 @@ const LOCATION_OPTIONS: LocationOption[] = [
   },
 ];
 
+const CALCULATION_METHOD_OPTIONS = [
+  { key: 'Diyanet', label: 'Diyanet (Turkey)' },
+  { key: 'MuslimWorldLeague', label: 'Muslim World League' },
+  { key: 'Karachi', label: 'Karachi' },
+  { key: 'Egyptian', label: 'Egyptian' },
+  { key: 'UmmAlQura', label: 'Umm al-Qura' },
+] as const;
+
+const TAHAJJUD_METHOD_OPTIONS: ReadonlyArray<{
+  value: TahajjudReminderMethod;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'custom',
+    label: 'Custom time',
+    description: 'Choose an exact reminder time.',
+  },
+  {
+    value: 'middle',
+    label: 'Middle of the night',
+    description: 'Automatically follow the midpoint between Isha and Fajr.',
+  },
+  {
+    value: 'lastThird',
+    label: 'Last third of the night',
+    description: 'Follow the final third of the night window.',
+  },
+];
+
 const DEFAULT_LOCATION_OPTION = LOCATION_OPTIONS[0];
+const HIDDEN_PRAYER_NAMES: ReadonlySet<PrayerName> = new Set(['Sunrise', 'Sunset']);
+
+const createDefaultTahajjudSettings = (): TahajjudPreferences => ({
+  enabled: false,
+  method: 'custom',
+  customTime: DEFAULT_TAHAJJUD_CUSTOM_TIME,
+  leadMinutes: 0,
+});
 
 const isValidLocation = (value: unknown): value is Location => {
   if (!value || typeof value !== 'object') {
@@ -141,19 +192,29 @@ const findPresetIdForLocation = (location: Location | null): string | null => {
     const coordinatesClose =
       Math.abs(preset.latitude - location.latitude) < 0.0001 &&
       Math.abs(preset.longitude - location.longitude) < 0.0001;
+
     return coordinatesClose && preset.timezone === location.timezone;
   });
 
   return match?.id ?? null;
 };
 
-const createDefaultNotificationPreferences = (): NotificationPreferencesState => ({
-  leadMinutes: DEFAULT_NOTIFICATION_LEAD_MINUTES,
-  perPrayer: {},
-});
+const clampTahajjudLeadMinutes = (value: number): number => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
 
-const clampLeadMinutes = (value: number): number =>
-  Math.min(MAX_NOTIFICATION_LEAD_MINUTES, Math.max(0, Math.round(value)));
+  const rounded = Math.round(value);
+  if (rounded < 0) {
+    return 0;
+  }
+
+  if (rounded > MAX_TAHAJJUD_LEAD_MINUTES) {
+    return MAX_TAHAJJUD_LEAD_MINUTES;
+  }
+
+  return rounded;
+};
 
 const formatTimeRemaining = (milliseconds: number): string => {
   if (milliseconds <= 0) {
@@ -175,50 +236,199 @@ const formatTimeRemaining = (milliseconds: number): string => {
   return `${minutes}m`;
 };
 
+const formatTo12Hour = (time: string): string => {
+  const match = time.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    return time;
+  }
+
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+    return time;
+  }
+
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const normalizedHour = hours % 12 || 12;
+  return `${String(normalizedHour)}:${String(minutes).padStart(2, '0')} ${period}`;
+};
+
+const formatDisplayTime = (time: string, twentyFourHourClock: boolean): string => {
+  return twentyFourHourClock ? time : formatTo12Hour(time);
+};
+
+const getIsoDateInTimeZone = (value: Date, timeZone: string): string => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  const parts = formatter.formatToParts(value);
+  const lookup = (type: 'year' | 'month' | 'day'): string => {
+    const match = parts.find((part) => part.type === type);
+    return match?.value ?? '00';
+  };
+
+  return `${lookup('year')}-${lookup('month')}-${lookup('day')}`;
+};
+
+const formatCurrentTime = (value: Date, timeZone: string | undefined, twentyFourHourClock: boolean): string => {
+  return new Intl.DateTimeFormat(undefined, {
+    ...(timeZone ? { timeZone } : {}),
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: !twentyFourHourClock,
+  }).format(value);
+};
+
+const formatCurrentDate = (value: Date, timeZone: string | undefined): string => {
+  return new Intl.DateTimeFormat(undefined, {
+    ...(timeZone ? { timeZone } : {}),
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(value);
+};
+
+const normalizeTahajjudSettings = (value: unknown): TahajjudPreferences => {
+  if (!value || typeof value !== 'object') {
+    return createDefaultTahajjudSettings();
+  }
+
+  const candidate = value as Partial<TahajjudPreferences>;
+  const method =
+    candidate.method === 'custom' || candidate.method === 'middle' || candidate.method === 'lastThird'
+      ? candidate.method
+      : 'custom';
+
+  const customTime =
+    typeof candidate.customTime === 'string' && candidate.customTime.length > 0
+      ? candidate.customTime
+      : DEFAULT_TAHAJJUD_CUSTOM_TIME;
+
+  return {
+    enabled: Boolean(candidate.enabled),
+    method,
+    customTime,
+    leadMinutes: clampTahajjudLeadMinutes(
+      typeof candidate.leadMinutes === 'number' ? candidate.leadMinutes : 0
+    ),
+  };
+};
+
 function App() {
   const [prayerTimes, setPrayerTimes] = useState<DailyPrayerTimes | null>(null);
   const [loading, setLoading] = useState(true);
   const [nextPrayer, setNextPrayer] = useState<PrayerTime | null>(null);
   const [previousPrayer, setPreviousPrayer] = useState<PrayerTime | null>(null);
-  const [nextPrayerProgress, setNextPrayerProgress] = useState<number>(0);
-  const [timeUntilNext, setTimeUntilNext] = useState<string>('');
-  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(false);
-  const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
-  const [showLocationOnboarding, setShowLocationOnboarding] = useState<boolean>(false);
+  const [nextPrayerProgress, setNextPrayerProgress] = useState(0);
+  const [timeUntilNext, setTimeUntilNext] = useState('');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showLocationOnboarding, setShowLocationOnboarding] = useState(false);
   const [activeLocation, setActiveLocation] = useState<Location | null>(null);
-  const [locationHydrated, setLocationHydrated] = useState<boolean>(false);
-  const [pendingLocationId, setPendingLocationId] = useState<string>(DEFAULT_LOCATION_OPTION.id);
+  const [locationHydrated, setLocationHydrated] = useState(false);
+  const [pendingLocationId, setPendingLocationId] = useState(DEFAULT_LOCATION_OPTION.id);
   const [locationPresetId, setLocationPresetId] = useState<string | null>(null);
-  const [currentTimeDisplay, setCurrentTimeDisplay] = useState<string>('');
-  const [currentDateDisplay, setCurrentDateDisplay] = useState<string>('');
-  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
-  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferencesState>(
-    () => createDefaultNotificationPreferences()
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [calculationMethod, setCalculationMethod] = useState(DEFAULT_CALCULATION_METHOD);
+  const [twentyFourHourClock, setTwentyFourHourClock] = useState(false);
+  const [notificationConfig, setNotificationConfig] = useState<NotificationScheduleConfig>(() =>
+    normalizeNotificationConfig()
   );
-  const [preferencesHydrated, setPreferencesHydrated] = useState<boolean>(false);
+  const [tahajjudSettings, setTahajjudSettings] = useState<TahajjudPreferences>(() =>
+    createDefaultTahajjudSettings()
+  );
+  const [prayerCheckState, setPrayerCheckState] = useState<PrayerCheckState>(() =>
+    createDefaultPrayerCheckState()
+  );
+  const [settingsHydrated, setSettingsHydrated] = useState(false);
+  const [currentTimeDisplay, setCurrentTimeDisplay] = useState('');
+  const [currentDateDisplay, setCurrentDateDisplay] = useState('');
 
   const notificationsSupported = typeof window !== 'undefined' && 'Notification' in window;
-  const notificationPermission = notificationsSupported ? Notification.permission : 'unsupported';
+  const notificationPermission =
+    notificationsSupported && typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
 
-  const enabledPrayerNames = useMemo<PrayerName[]>(() => {
-    return Object.entries(notificationPreferences.perPrayer)
-      .filter(([name, enabled]) => Boolean(enabled) && !HIDDEN_PRAYER_NAMES.has(name as PrayerName))
-      .map(([name]) => name as PrayerName);
-  }, [notificationPreferences.perPrayer]);
+  const prayerTimesRef = useRef<DailyPrayerTimes | null>(null);
+  const activeLocationRef = useRef<Location | null>(null);
+
+  const calculationMethodLabel = useMemo(() => {
+    return (
+      CALCULATION_METHOD_OPTIONS.find((option) => option.key === calculationMethod)?.label ?? calculationMethod
+    );
+  }, [calculationMethod]);
 
   const visiblePrayers = useMemo<PrayerTime[]>(() => {
     if (!prayerTimes) {
       return [];
     }
+
     return prayerTimes.prayers.filter((prayer) => !HIDDEN_PRAYER_NAMES.has(prayer.name));
   }, [prayerTimes]);
+
+  const notificationPrayers = useMemo<PrayerTime[]>(() => {
+    return visiblePrayers.filter((prayer) =>
+      NOTIFIABLE_PRAYER_NAMES.includes(prayer.name as NotifiablePrayerName)
+    );
+  }, [visiblePrayers]);
 
   const selectedLocationOption = useMemo<LocationOption>(() => {
     return LOCATION_OPTIONS.find((option) => option.id === pendingLocationId) ?? DEFAULT_LOCATION_OPTION;
   }, [pendingLocationId]);
 
-  const prayerTimesRef = useRef<DailyPrayerTimes | null>(null);
-  const activeLocationRef = useRef<Location | null>(null);
+  const settingsLocationId = useMemo(() => {
+    return locationPresetId ?? findPresetIdForLocation(activeLocation) ?? DEFAULT_LOCATION_OPTION.id;
+  }, [activeLocation, locationPresetId]);
+
+  const tahajjudPreview = useMemo(() => {
+    return computeTahajjudReminderTime({
+      method: tahajjudSettings.method,
+      location: activeLocation,
+      customTime: tahajjudSettings.customTime,
+      fallbackTime: tahajjudSettings.customTime,
+      calculationMethod,
+    });
+  }, [activeLocation, calculationMethod, tahajjudSettings.customTime, tahajjudSettings.method]);
+
+  const tahajjudMethodLabel = useMemo(() => {
+    return (
+      TAHAJJUD_METHOD_OPTIONS.find((option) => option.value === tahajjudSettings.method)?.label ??
+      tahajjudSettings.method
+    );
+  }, [tahajjudSettings.method]);
+
+  const tahajjudStatusLabel = useMemo(() => {
+    if (!tahajjudSettings.enabled) {
+      return 'Night reminder is off';
+    }
+
+    const prefix =
+      tahajjudSettings.leadMinutes > 0
+        ? `${tahajjudSettings.leadMinutes} min before`
+        : 'At reminder time';
+
+    return `${formatDisplayTime(tahajjudPreview.time, twentyFourHourClock)} • ${prefix}`;
+  }, [tahajjudPreview.time, tahajjudSettings.enabled, tahajjudSettings.leadMinutes, twentyFourHourClock]);
+
+  const pendingPrayerCheck = useMemo(() => {
+    return prayerCheckState.pending[0] ?? null;
+  }, [prayerCheckState.pending]);
+
+  const totalMissedPrayers = useMemo(() => {
+    return NOTIFIABLE_PRAYER_NAMES.reduce((total, prayerName) => {
+      return total + (prayerCheckState.missedCounts[prayerName] ?? 0);
+    }, 0);
+  }, [prayerCheckState.missedCounts]);
+
+  const missedPrayerBreakdown = useMemo(() => {
+    return NOTIFIABLE_PRAYER_NAMES.filter((prayerName) => (prayerCheckState.missedCounts[prayerName] ?? 0) > 0).map(
+      (prayerName) => `${prayerName} ${prayerCheckState.missedCounts[prayerName]}`
+    );
+  }, [prayerCheckState.missedCounts]);
 
   useEffect(() => {
     prayerTimesRef.current = prayerTimes;
@@ -241,7 +451,6 @@ function App() {
         setLoading(false);
         setPendingLocationId(DEFAULT_LOCATION_OPTION.id);
         setShowLocationOnboarding(true);
-        setShowOnboarding(false);
         setSettingsOpen(false);
         setLocationHydrated(true);
         return;
@@ -274,7 +483,6 @@ function App() {
         setLoading(false);
         setPendingLocationId(DEFAULT_LOCATION_OPTION.id);
         setShowLocationOnboarding(true);
-        setShowOnboarding(false);
         setSettingsOpen(false);
       }
     } catch (error) {
@@ -282,20 +490,291 @@ function App() {
       setLoading(false);
       setPendingLocationId(DEFAULT_LOCATION_OPTION.id);
       setShowLocationOnboarding(true);
-      setShowOnboarding(false);
       setSettingsOpen(false);
     } finally {
       setLocationHydrated(true);
     }
   }, []);
 
-  const openSettings = useCallback(() => {
-    setSettingsOpen(true);
-    setShowOnboarding(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      setSettingsHydrated(true);
+      return;
+    }
+
+    try {
+      const storedMethod = localStorage.getItem(CALCULATION_METHOD_STORAGE_KEY);
+      if (storedMethod) {
+        setCalculationMethod(storedMethod);
+      }
+
+      const storedClock = localStorage.getItem(TIME_FORMAT_STORAGE_KEY);
+      if (storedClock === 'true' || storedClock === 'false') {
+        setTwentyFourHourClock(storedClock === 'true');
+      }
+
+      const storedNotificationConfig = localStorage.getItem(NOTIFICATION_SETTINGS_STORAGE_KEY);
+      if (storedNotificationConfig) {
+        setNotificationConfig(normalizeNotificationConfig(JSON.parse(storedNotificationConfig)));
+      }
+
+      const storedTahajjud = localStorage.getItem(TAHAJJUD_SETTINGS_STORAGE_KEY);
+      if (storedTahajjud) {
+        setTahajjudSettings(normalizeTahajjudSettings(JSON.parse(storedTahajjud)));
+      }
+    } catch (error) {
+      console.error('Failed to load desktop settings', error);
+    } finally {
+      setSettingsHydrated(true);
+    }
   }, []);
 
+  useEffect(() => {
+    if (!settingsHydrated || typeof window === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(CALCULATION_METHOD_STORAGE_KEY, calculationMethod);
+  }, [calculationMethod, settingsHydrated]);
+
+  useEffect(() => {
+    if (!settingsHydrated || typeof window === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(TIME_FORMAT_STORAGE_KEY, String(twentyFourHourClock));
+  }, [settingsHydrated, twentyFourHourClock]);
+
+  useEffect(() => {
+    if (!settingsHydrated || typeof window === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(NOTIFICATION_SETTINGS_STORAGE_KEY, JSON.stringify(notificationConfig));
+  }, [notificationConfig, settingsHydrated]);
+
+  useEffect(() => {
+    if (!settingsHydrated || typeof window === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(TAHAJJUD_SETTINGS_STORAGE_KEY, JSON.stringify(tahajjudSettings));
+  }, [settingsHydrated, tahajjudSettings]);
+
+  const persistLocation = useCallback((location: Location, presetId?: string | null) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const payload: StoredLocationPayload = {
+        location,
+        ...(presetId ? { presetId } : {}),
+      };
+
+      localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(payload));
+    } catch (error) {
+      console.error('Failed to persist location', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!locationHydrated || !activeLocation) {
+      return;
+    }
+
+    const matchedPreset = locationPresetId ?? findPresetIdForLocation(activeLocation);
+    persistLocation(activeLocation, matchedPreset);
+  }, [activeLocation, locationHydrated, locationPresetId, persistLocation]);
+
+  const updateNextPrayer = useCallback((times: DailyPrayerTimes) => {
+    const prayers = times.prayers.filter((prayer) => !HIDDEN_PRAYER_NAMES.has(prayer.name));
+
+    if (!prayers.length) {
+      setNextPrayer(null);
+      setPreviousPrayer(null);
+      setTimeUntilNext('');
+      setNextPrayerProgress(0);
+      return;
+    }
+
+    const reference = new Date();
+    const upcoming = PrayerTimeCalculator.getNextPrayerTime(prayers, reference);
+    setNextPrayer(upcoming);
+
+    if (!upcoming) {
+      setTimeUntilNext('');
+      setPreviousPrayer(null);
+      setNextPrayerProgress(0);
+      return;
+    }
+
+    const remaining = PrayerTimeCalculator.getTimeUntilPrayer(upcoming, reference);
+    setTimeUntilNext(formatTimeRemaining(remaining));
+
+    const nextOccurrence = PrayerTimeCalculator.getUpcomingOccurrence(upcoming, reference);
+
+    let previousContext: { prayer: PrayerTime; occurrence: Date } | null = null;
+
+    prayers.forEach((prayer) => {
+      const occurrence = PrayerTimeCalculator.getOccurrenceForDate(prayer, reference);
+      if (occurrence.getTime() <= reference.getTime()) {
+        previousContext = { prayer, occurrence };
+      }
+    });
+
+    if (!previousContext && prayers.length > 0) {
+      const lastPrayer = prayers[prayers.length - 1];
+      const occurrence = PrayerTimeCalculator.getOccurrenceForDate(lastPrayer, reference);
+      if (occurrence.getTime() >= nextOccurrence.getTime()) {
+        occurrence.setDate(occurrence.getDate() - 1);
+      }
+      previousContext = { prayer: lastPrayer, occurrence };
+    }
+
+    if (previousContext && previousContext.occurrence.getTime() >= nextOccurrence.getTime()) {
+      previousContext.occurrence.setDate(previousContext.occurrence.getDate() - 1);
+    }
+
+    setPreviousPrayer(previousContext?.prayer ?? null);
+
+    if (!previousContext) {
+      setNextPrayerProgress(0);
+      return;
+    }
+
+    const totalWindow = nextOccurrence.getTime() - previousContext.occurrence.getTime();
+    const elapsedWindow = reference.getTime() - previousContext.occurrence.getTime();
+
+    if (totalWindow <= 0) {
+      setNextPrayerProgress(0);
+      return;
+    }
+
+    const progress = Math.min(100, Math.max(0, (elapsedWindow / totalWindow) * 100));
+    setNextPrayerProgress(progress);
+  }, []);
+
+  const loadPrayerTimes = useCallback(
+    async (targetLocation: Location) => {
+      try {
+        setLoading(true);
+
+        const now = new Date();
+        let times: DailyPrayerTimes;
+
+        if (window.electron?.calculatePrayerTimes) {
+          times = await window.electron.calculatePrayerTimes(now.toISOString(), targetLocation, calculationMethod);
+        } else {
+          times = PrayerTimeCalculator.calculatePrayerTimes(now, targetLocation, calculationMethod);
+        }
+
+        setPrayerTimes(times);
+        updateNextPrayer(times);
+      } catch (error) {
+        console.error('Error loading prayer times:', error);
+        setPrayerTimes(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [calculationMethod, updateNextPrayer]
+  );
+
+  useEffect(() => {
+    if (!locationHydrated) {
+      return;
+    }
+
+    if (!activeLocation) {
+      setPrayerTimes(null);
+      return;
+    }
+
+    loadPrayerTimes(activeLocation);
+  }, [activeLocation, loadPrayerTimes, locationHydrated]);
+
+  useEffect(() => {
+    const removeListener = window.electron?.ipcRenderer?.on('notifications:open', () => {
+      setSettingsOpen(true);
+      setShowOnboarding(false);
+    });
+
+    return () => {
+      removeListener?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPrayerCheckState = async () => {
+      try {
+        const nextState = await window.electron?.getPrayerCheckState?.();
+        if (!cancelled && nextState) {
+          setPrayerCheckState(nextState);
+        }
+      } catch (error) {
+        console.error('Failed to load prayer check state.', error);
+      }
+    };
+
+    void loadPrayerCheckState();
+
+    const removeListener = window.electron?.ipcRenderer?.on('prayer-check-state', (nextState: unknown) => {
+      if (!nextState || typeof nextState !== 'object') {
+        return;
+      }
+
+      setPrayerCheckState(nextState as PrayerCheckState);
+    });
+
+    return () => {
+      cancelled = true;
+      removeListener?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let lastTick = Date.now();
+
+    const tick = () => {
+      const now = new Date();
+      const currentLocation = activeLocationRef.current;
+      const timeZone = currentLocation?.timezone;
+
+      setCurrentTimeDisplay(formatCurrentTime(now, timeZone, twentyFourHourClock));
+      setCurrentDateDisplay(formatCurrentDate(now, timeZone));
+
+      const currentTimes = prayerTimesRef.current;
+      if (currentTimes) {
+        updateNextPrayer(currentTimes);
+
+        if (currentLocation) {
+          const currentDateKey = getIsoDateInTimeZone(now, currentLocation.timezone);
+          if (currentDateKey !== currentTimes.date) {
+            void loadPrayerTimes(currentLocation);
+          }
+        }
+      }
+
+      const nowMs = now.getTime();
+      if (Math.abs(nowMs - lastTick - CLOCK_REFRESH_INTERVAL) > CLOCK_DRIFT_THRESHOLD) {
+        const locationForReload = activeLocationRef.current;
+        if (locationForReload) {
+          void loadPrayerTimes(locationForReload);
+        }
+      }
+      lastTick = nowMs;
+    };
+
+    tick();
+    const timer = window.setInterval(tick, CLOCK_REFRESH_INTERVAL);
+    return () => window.clearInterval(timer);
+  }, [loadPrayerTimes, twentyFourHourClock, updateNextPrayer]);
+
   const requestNotificationsPermission = useCallback(async (): Promise<boolean> => {
-    if (!notificationsSupported) {
+    if (!notificationsSupported || typeof Notification === 'undefined') {
       localStorage.setItem(NOTIFICATION_STORAGE_KEY, 'unsupported');
       setNotificationsEnabled(false);
       return false;
@@ -322,355 +801,8 @@ function App() {
     }
   }, [notificationsSupported]);
 
-  const handleSettingsToggleNotifications = useCallback(
-    async (enabled: boolean) => {
-      if (enabled) {
-        const granted = await requestNotificationsPermission();
-        if (!granted) {
-          return;
-        }
-      } else {
-        localStorage.setItem(NOTIFICATION_STORAGE_KEY, 'denied');
-        setNotificationsEnabled(false);
-      }
-    },
-    [requestNotificationsPermission]
-  );
-
-  const handleLeadMinutesChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = Number(event.target.value);
-    if (Number.isNaN(value)) {
-      return;
-    }
-
-    setNotificationPreferences((prev) => ({
-      ...prev,
-      leadMinutes: clampLeadMinutes(value),
-    }));
-  };
-
-  const handlePrayerToggle = (name: PrayerName) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    const { checked } = event.target;
-    setNotificationPreferences((prev) => ({
-      ...prev,
-      perPrayer: {
-        ...prev.perPrayer,
-        [name]: checked,
-      },
-    }));
-  };
-
-  const handleCloseSettings = () => {
-    setSettingsOpen(false);
-  };
-
-  const persistLocation = useCallback((location: Location, presetId?: string | null) => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    try {
-      const payload: StoredLocationPayload = {
-        location,
-        ...(presetId ? { presetId } : {}),
-      };
-      localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(payload));
-    } catch (error) {
-      console.error('Failed to persist location', error);
-    }
-  }, []);
-
-  const handleOpenLocationPicker = useCallback(() => {
-    const matchedPreset = locationPresetId ?? findPresetIdForLocation(activeLocationRef.current);
-    setPendingLocationId(matchedPreset ?? DEFAULT_LOCATION_OPTION.id);
-    setShowLocationOnboarding(true);
-    setShowOnboarding(false);
-    setSettingsOpen(false);
-  }, [locationPresetId]);
-
-  const handleLocationSelectionChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setPendingLocationId(event.target.value);
-  };
-
-  const handleConfirmLocation = () => {
-    const nextOption = selectedLocationOption;
-    setLocationPresetId(nextOption.id);
-    setActiveLocation(nextOption.location);
-    persistLocation(nextOption.location, nextOption.id);
-    setShowLocationOnboarding(false);
-    setShowOnboarding(false);
-    setLoading(true);
-  };
-
   useEffect(() => {
-    if (!locationHydrated || !activeLocation) {
-      return;
-    }
-
-    const matchedPreset = locationPresetId ?? findPresetIdForLocation(activeLocation);
-    persistLocation(activeLocation, matchedPreset);
-  }, [activeLocation, locationHydrated, locationPresetId, persistLocation]);
-
-  const updateNextPrayer = useCallback(
-    (times: DailyPrayerTimes) => {
-      const visiblePrayers = times.prayers.filter((prayer) => !HIDDEN_PRAYER_NAMES.has(prayer.name));
-
-      if (!visiblePrayers.length) {
-        setNextPrayer(null);
-        setPreviousPrayer(null);
-        setTimeUntilNext('');
-        setNextPrayerProgress(0);
-        return;
-      }
-
-      const reference = new Date();
-      const upcoming = PrayerTimeCalculator.getNextPrayerTime(visiblePrayers, reference) ?? null;
-      setNextPrayer(upcoming);
-
-      if (upcoming) {
-        const remaining = PrayerTimeCalculator.getTimeUntilPrayer(upcoming, reference);
-        setTimeUntilNext(formatTimeRemaining(remaining));
-
-        const now = reference;
-        const nextOccurrence = PrayerTimeCalculator.getUpcomingOccurrence(upcoming, now);
-
-        let previousContext: { prayer: PrayerTime; occurrence: Date } | null = null;
-
-        visiblePrayers.forEach((prayer) => {
-          const occurrence = PrayerTimeCalculator.getOccurrenceForDate(prayer, now);
-          if (occurrence.getTime() <= now.getTime()) {
-            previousContext = { prayer, occurrence };
-          }
-        });
-
-        if (!previousContext && visiblePrayers.length) {
-          const lastPrayer = visiblePrayers[visiblePrayers.length - 1];
-          const occurrence = PrayerTimeCalculator.getOccurrenceForDate(lastPrayer, now);
-          if (occurrence.getTime() >= nextOccurrence.getTime()) {
-            occurrence.setDate(occurrence.getDate() - 1);
-          }
-          previousContext = { prayer: lastPrayer, occurrence };
-        }
-
-        if (previousContext && previousContext.occurrence.getTime() >= nextOccurrence.getTime()) {
-          previousContext.occurrence.setDate(previousContext.occurrence.getDate() - 1);
-        }
-
-        setPreviousPrayer(previousContext?.prayer ?? null);
-
-        if (previousContext) {
-          const totalWindow = nextOccurrence.getTime() - previousContext.occurrence.getTime();
-          const elapsedWindow = now.getTime() - previousContext.occurrence.getTime();
-
-          if (totalWindow > 0) {
-            const progress = Math.min(100, Math.max(0, (elapsedWindow / totalWindow) * 100));
-            setNextPrayerProgress(progress);
-          } else {
-            setNextPrayerProgress(0);
-          }
-        } else {
-          setNextPrayerProgress(0);
-        }
-      } else {
-        setTimeUntilNext('');
-        setPreviousPrayer(null);
-        setNextPrayerProgress(0);
-      }
-    },
-    []
-  );
-
-  const loadPrayerTimes = useCallback(
-    async (targetLocation: Location) => {
-      try {
-        setLoading(true);
-
-        const now = new Date();
-        let times: DailyPrayerTimes;
-
-        if (window.electron?.calculatePrayerTimes) {
-          times = await window.electron.calculatePrayerTimes(
-            now.toISOString(),
-            targetLocation,
-            DEFAULT_CALCULATION_METHOD
-          );
-        } else {
-          times = PrayerTimeCalculator.calculatePrayerTimes(now, targetLocation, DEFAULT_CALCULATION_METHOD);
-        }
-
-        setPrayerTimes(times);
-        updateNextPrayer(times);
-      } catch (error) {
-        console.error('Error loading prayer times:', error);
-        setPrayerTimes(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [updateNextPrayer]
-  );
-
-  useEffect(() => {
-    if (!locationHydrated) {
-      return;
-    }
-
-    if (!activeLocation) {
-      setPrayerTimes(null);
-      return;
-    }
-
-    loadPrayerTimes(activeLocation);
-  }, [activeLocation, locationHydrated, loadPrayerTimes]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const stored = localStorage.getItem(NOTIFICATION_SETTINGS_STORAGE_KEY);
-
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        const rawLead = Number(parsed?.leadMinutes);
-        const nextLead = Number.isFinite(rawLead) ? clampLeadMinutes(rawLead) : DEFAULT_NOTIFICATION_LEAD_MINUTES;
-        const sanitizedPerPrayer: Partial<Record<PrayerName, boolean>> = {};
-
-        if (parsed?.perPrayer && typeof parsed.perPrayer === 'object') {
-          Object.entries(parsed.perPrayer as Record<string, boolean>).forEach(([name, value]) => {
-            if (
-              ALL_PRAYER_NAMES.includes(name as PrayerName) &&
-              !HIDDEN_PRAYER_NAMES.has(name as PrayerName) &&
-              typeof value === 'boolean'
-            ) {
-              sanitizedPerPrayer[name as PrayerName] = value;
-            }
-          });
-        }
-
-        setNotificationPreferences({
-          leadMinutes: nextLead,
-          perPrayer: sanitizedPerPrayer,
-        });
-      } catch (error) {
-        console.error('Failed to load notification preferences', error);
-      }
-    }
-
-    setPreferencesHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!preferencesHydrated || typeof window === 'undefined') {
-      return;
-    }
-    localStorage.setItem(NOTIFICATION_SETTINGS_STORAGE_KEY, JSON.stringify(notificationPreferences));
-  }, [notificationPreferences, preferencesHydrated]);
-
-  useEffect(() => {
-    if (!prayerTimes) {
-      return;
-    }
-
-    setNotificationPreferences((prev) => {
-      const perPrayer = { ...prev.perPrayer };
-      let changed = false;
-
-      prayerTimes.prayers.forEach((prayer) => {
-        if (HIDDEN_PRAYER_NAMES.has(prayer.name)) {
-          if (typeof perPrayer[prayer.name] !== 'undefined') {
-            delete perPrayer[prayer.name];
-            changed = true;
-          }
-          return;
-        }
-
-        if (typeof perPrayer[prayer.name] === 'undefined') {
-          perPrayer[prayer.name] = true;
-          changed = true;
-        }
-      });
-
-      Object.keys(perPrayer).forEach((name) => {
-        if (HIDDEN_PRAYER_NAMES.has(name as PrayerName)) {
-          delete perPrayer[name as PrayerName];
-          changed = true;
-          return;
-        }
-
-        if (!prayerTimes.prayers.some((prayer) => prayer.name === name)) {
-          delete perPrayer[name as PrayerName];
-          changed = true;
-        }
-      });
-
-      if (!changed) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        perPrayer,
-      };
-    });
-  }, [prayerTimes]);
-
-  useEffect(() => {
-    const removeListener = window.electron?.ipcRenderer?.on('notifications:open', () => {
-      openSettings();
-    });
-
-    return () => {
-      removeListener?.();
-    };
-  }, [openSettings]);
-
-  useEffect(() => {
-    let lastTick = Date.now();
-
-    const tick = () => {
-      const now = new Date();
-      setCurrentTimeDisplay(
-        new Intl.DateTimeFormat(undefined, {
-          hour: '2-digit',
-          minute: '2-digit',
-        }).format(now)
-      );
-      setCurrentDateDisplay(
-        new Intl.DateTimeFormat(undefined, {
-          weekday: 'long',
-          month: 'long',
-          day: 'numeric',
-        }).format(now)
-      );
-
-      const currentTimes = prayerTimesRef.current;
-      if (currentTimes) {
-        updateNextPrayer(currentTimes);
-      }
-
-      const nowMs = now.getTime();
-      if (Math.abs(nowMs - lastTick - CLOCK_REFRESH_INTERVAL) > CLOCK_DRIFT_THRESHOLD) {
-        const locationForReload = activeLocationRef.current;
-        if (locationForReload) {
-          loadPrayerTimes(locationForReload);
-        }
-      }
-      lastTick = nowMs;
-    };
-
-    tick();
-    const timer = setInterval(tick, CLOCK_REFRESH_INTERVAL);
-    return () => clearInterval(timer);
-  }, [loadPrayerTimes, updateNextPrayer]);
-
-  useEffect(() => {
-    if (!locationHydrated || !activeLocation) {
-      return;
-    }
-
-    if (!('Notification' in window)) {
+    if (!locationHydrated || !activeLocation || !notificationsSupported || typeof Notification === 'undefined') {
       return;
     }
 
@@ -684,15 +816,13 @@ function App() {
       return;
     }
 
-    if (storedPreference === 'granted') {
-      setShowOnboarding(true);
-    } else if (storedPreference === 'prompt' || storedPreference === null) {
+    if (storedPreference === 'granted' || storedPreference === 'prompt' || storedPreference === null) {
       setShowOnboarding(true);
     }
-  }, [activeLocation, locationHydrated]);
+  }, [activeLocation, locationHydrated, notificationsSupported]);
 
   useEffect(() => {
-    if (!preferencesHydrated) {
+    if (!settingsHydrated) {
       return;
     }
 
@@ -702,33 +832,35 @@ function App() {
       return;
     }
 
-    const preferencesPayload: NotificationPreferencesPayload = {
-      leadMinutes: notificationPreferences.leadMinutes,
+    const tahajjudPayload = {
+      enabled: notificationsEnabled && tahajjudSettings.enabled,
+      method: tahajjudSettings.method,
+      customTime: tahajjudSettings.customTime,
+      leadMinutes: tahajjudSettings.leadMinutes,
+      location: activeLocation,
+      calculationMethod,
     };
-
-  const totalPrayers = visiblePrayers.length;
-    if (totalPrayers > 0) {
-      preferencesPayload.enabledPrayers = [...enabledPrayerNames];
-    }
 
     if (
       notificationsEnabled &&
       prayerTimes &&
       (!notificationsSupported || notificationPermission === 'granted')
     ) {
-      configure(true, prayerTimes, preferencesPayload);
-    } else {
-      configure(false);
+      configure(true, prayerTimes, notificationConfig, tahajjudPayload);
+      return;
     }
+
+    configure(false, undefined, notificationConfig, tahajjudPayload);
   }, [
-    enabledPrayerNames,
+    activeLocation,
+    calculationMethod,
+    notificationConfig,
     notificationPermission,
-    notificationPreferences.leadMinutes,
-    preferencesHydrated,
     notificationsEnabled,
     notificationsSupported,
     prayerTimes,
-    visiblePrayers,
+    tahajjudSettings,
+    settingsHydrated,
   ]);
 
   useEffect(() => {
@@ -737,6 +869,124 @@ function App() {
       configure?.(false);
     };
   }, []);
+
+  const updateNotificationConfig = useCallback(
+    (
+      updater:
+        | NotificationScheduleConfig
+        | ((previous: NotificationScheduleConfig) => NotificationScheduleConfig)
+    ) => {
+      setNotificationConfig((previous) => {
+        const next = typeof updater === 'function' ? updater(previous) : updater;
+        return normalizeNotificationConfig(next);
+      });
+    },
+    []
+  );
+
+  const handleNotificationToggle = useCallback(
+    async (enabled: boolean) => {
+      if (enabled) {
+        await requestNotificationsPermission();
+        return;
+      }
+
+      localStorage.setItem(NOTIFICATION_STORAGE_KEY, 'denied');
+      setNotificationsEnabled(false);
+    },
+    [requestNotificationsPermission]
+  );
+
+  const handlePrayerToggle = useCallback((prayerName: NotifiablePrayerName) => {
+    return (event: React.ChangeEvent<HTMLInputElement>) => {
+      const { checked } = event.target;
+      updateNotificationConfig((previous) => ({
+        ...previous,
+        enabledPrayers: {
+          ...previous.enabledPrayers,
+          [prayerName]: checked,
+        },
+      }));
+    };
+  }, [updateNotificationConfig]);
+
+  const handleLeadMinutesChange = useCallback(
+    (key: 'minutesBefore' | 'minutesAfter') => (event: React.ChangeEvent<HTMLInputElement>) => {
+      const parsed = Number(event.target.value);
+      updateNotificationConfig((previous) => ({
+        ...previous,
+        [key]: Number.isFinite(parsed) ? parsed : 0,
+      }));
+    },
+    [updateNotificationConfig]
+  );
+
+  const handleReminderVariantToggle = useCallback(
+    (key: 'sendAtPrayerTime' | 'sendBefore' | 'sendAfter') =>
+      (event: React.ChangeEvent<HTMLInputElement>) => {
+        const { checked } = event.target;
+        updateNotificationConfig((previous) => {
+          const next = { ...previous, [key]: checked };
+
+          if (key === 'sendBefore' && checked && previous.minutesBefore === 0) {
+            next.minutesBefore = DEFAULT_NOTIFICATION_CONFIG.minutesBefore;
+          }
+
+          if (key === 'sendAfter' && checked && previous.minutesAfter === 0) {
+            next.minutesAfter = DEFAULT_NOTIFICATION_CONFIG.minutesAfter;
+          }
+
+          return next;
+        });
+      },
+    [updateNotificationConfig]
+  );
+
+  const handleCalculationMethodChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    setCalculationMethod(event.target.value);
+  };
+
+  const handleTwentyFourHourClockChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setTwentyFourHourClock(event.target.checked);
+  };
+
+  const handleLocationSelectionChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setPendingLocationId(event.target.value);
+  };
+
+  const handleSettingsLocationChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextId = event.target.value;
+    const nextOption = LOCATION_OPTIONS.find((option) => option.id === nextId);
+
+    if (!nextOption) {
+      return;
+    }
+
+    setPendingLocationId(nextId);
+    setLocationPresetId(nextOption.id);
+    setActiveLocation(nextOption.location);
+    persistLocation(nextOption.location, nextOption.id);
+    setShowLocationOnboarding(false);
+    setLoading(true);
+  };
+
+  const handleOpenLocationPicker = useCallback(() => {
+    const matchedPreset = locationPresetId ?? findPresetIdForLocation(activeLocationRef.current);
+    setPendingLocationId(matchedPreset ?? DEFAULT_LOCATION_OPTION.id);
+    setShowLocationOnboarding(true);
+    setShowOnboarding(false);
+    setSettingsOpen(false);
+  }, [locationPresetId]);
+
+  const handleConfirmLocation = () => {
+    const nextOption = selectedLocationOption;
+    setLocationPresetId(nextOption.id);
+    setActiveLocation(nextOption.location);
+    persistLocation(nextOption.location, nextOption.id);
+    setShowLocationOnboarding(false);
+    setShowOnboarding(false);
+    setLoading(true);
+  };
 
   const handleEnableNotifications = useCallback(async () => {
     await requestNotificationsPermission();
@@ -759,12 +1009,60 @@ function App() {
       setShowOnboarding(true);
       return;
     }
-    openSettings();
+
+    setSettingsOpen(true);
+    setShowOnboarding(false);
   };
 
-  const firstPrayer = visiblePrayers[0] ?? null;
-  const lastPrayer = visiblePrayers[visiblePrayers.length - 1] ?? null;
-  const sunrisePrayer = visiblePrayers.find((prayer) => prayer.name === 'Sunrise') ?? null;
+  const handlePrayerCheckResponse = useCallback(async (id: string, response: PrayerCheckResponse) => {
+    try {
+      const nextState = await window.electron?.respondToPrayerCheck?.(id, response);
+      if (nextState) {
+        setPrayerCheckState(nextState);
+      }
+    } catch (error) {
+      console.error('Failed to record prayer check response.', error);
+    }
+  }, []);
+
+  const handleTahajjudToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const { checked } = event.target;
+    setTahajjudSettings((previous) => ({
+      ...previous,
+      enabled: checked,
+    }));
+  };
+
+  const handleTahajjudMethodChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextMethod = event.target.value as TahajjudReminderMethod;
+    setTahajjudSettings((previous) => ({
+      ...previous,
+      method: nextMethod,
+    }));
+  };
+
+  const handleTahajjudTimeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextTime = event.target.value;
+    setTahajjudSettings((previous) => ({
+      ...previous,
+      customTime: nextTime || DEFAULT_TAHAJJUD_CUSTOM_TIME,
+    }));
+  };
+
+  const handleTahajjudLeadMinutesChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const parsed = Number(event.target.value);
+    setTahajjudSettings((previous) => ({
+      ...previous,
+      leadMinutes: clampTahajjudLeadMinutes(Number.isFinite(parsed) ? parsed : 0),
+    }));
+  };
+
+  const sunrisePrayer = prayerTimes?.prayers.find((prayer) => prayer.name === 'Sunrise') ?? null;
+  const tahajjudSectionDisabled = !activeLocation;
+  const locationSummary = activeLocation ? `${activeLocation.city}, ${activeLocation.country}` : 'Choose location';
+  const locationDetail = activeLocation?.timezone ?? null;
+  const missedPrayerSummaryText =
+    missedPrayerBreakdown.length > 0 ? missedPrayerBreakdown.join(' • ') : 'No missed prayers';
 
   return (
     <div className="app">
@@ -794,10 +1092,7 @@ function App() {
               ))}
             </div>
             <div className="location-actions">
-              <button
-                className="location-action primary"
-                onClick={handleConfirmLocation}
-              >
+              <button className="location-action primary" onClick={handleConfirmLocation}>
                 Continue
               </button>
             </div>
@@ -805,13 +1100,14 @@ function App() {
           </div>
         </div>
       )}
+
       {showOnboarding && (
         <div className="notification-onboarding">
           <div className="notification-dialog">
             <h3>Prayer reminders</h3>
             <p>
-              Stay on schedule with gentle notifications for each prayer time. Would you like to
-              enable reminders?
+              Stay on schedule with desktop reminders for each prayer time and tahajjud.
+              Would you like to enable notifications?
             </p>
             <div className="notification-actions">
               <button className="primary" onClick={handleEnableNotifications}>
@@ -824,18 +1120,26 @@ function App() {
           </div>
         </div>
       )}
+
       {settingsOpen && (
         <div className="settings-overlay">
           <div className="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
             <div className="settings-header">
               <div>
                 <h3 id="settings-title">Prayer settings</h3>
-                <p>Fine-tune reminders to match your routine.</p>
+                <p>Align the desktop experience with the mobile prayer preferences.</p>
               </div>
-              <button className="settings-close" onClick={handleCloseSettings} aria-label="Close settings">
+              <button
+                className="settings-close"
+                onClick={() => {
+                  setSettingsOpen(false);
+                }}
+                aria-label="Close settings"
+              >
                 Close
               </button>
             </div>
+
             <div className="settings-body">
               <section className="settings-section">
                 <div className="settings-row">
@@ -843,9 +1147,20 @@ function App() {
                     <span className="settings-label">Location</span>
                     <p className="settings-description">Prayer times follow the city and timezone you select.</p>
                   </div>
-                  <button className="settings-secondary-button" onClick={handleOpenLocationPicker}>
-                    Change
-                  </button>
+                  <div className="settings-field settings-select-field">
+                    <select
+                      className="settings-select"
+                      value={settingsLocationId}
+                      onChange={handleSettingsLocationChange}
+                      aria-label="Location"
+                    >
+                      {LOCATION_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <p className="settings-note">
                   {activeLocation
@@ -853,117 +1168,348 @@ function App() {
                     : 'Select a location to calculate prayer times.'}
                 </p>
               </section>
+
               <section className="settings-section">
                 <div className="settings-row">
-                  <label className="settings-label" htmlFor="settings-notifications-toggle">
-                    Prayer reminders
+                  <div>
+                    <span className="settings-label">Calculation method</span>
+                    <p className="settings-description">Choose how prayer times are calculated on desktop.</p>
+                  </div>
+                  <div className="settings-field settings-select-field">
+                    <select
+                      className="settings-select"
+                      value={calculationMethod}
+                      onChange={handleCalculationMethodChange}
+                      aria-label="Calculation method"
+                    >
+                      {CALCULATION_METHOD_OPTIONS.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <p className="settings-note">
+                  Diyanet is now available on desktop and the selected method updates the schedule immediately.
+                </p>
+              </section>
+
+              <section className="settings-section">
+                <div className="settings-row">
+                  <div>
+                    <span className="settings-label">24-hour clock</span>
+                    <p className="settings-description">Match the desktop time display with your mobile preference.</p>
+                  </div>
+                  <label className="settings-toggle" htmlFor="settings-twenty-four-hour">
+                    <input
+                      id="settings-twenty-four-hour"
+                      type="checkbox"
+                      checked={twentyFourHourClock}
+                      onChange={handleTwentyFourHourClockChange}
+                    />
+                    <span>{twentyFourHourClock ? '24h' : '12h'}</span>
                   </label>
+                </div>
+              </section>
+
+              <section className="settings-section">
+                <div className="settings-row">
+                  <div>
+                    <span className="settings-label">Prayer reminders</span>
+                    <p className="settings-description">Enable desktop notifications for daily prayer moments.</p>
+                  </div>
                   <label className="settings-toggle" htmlFor="settings-notifications-toggle">
                     <input
                       id="settings-notifications-toggle"
                       type="checkbox"
                       checked={notificationsEnabled}
-                      onChange={(event) => handleSettingsToggleNotifications(event.target.checked)}
+                      onChange={(event) => {
+                        void handleNotificationToggle(event.target.checked);
+                      }}
                     />
                     <span>{notificationsEnabled ? 'Enabled' : 'Disabled'}</span>
                   </label>
                 </div>
-                <p className="settings-description">Allow desktop reminders before each prayer time.</p>
                 {notificationPermission === 'denied' && (
                   <p className="settings-note warning">
-                    Notifications are currently blocked. Enable them from system preferences to receive reminders.
+                    Notifications are blocked. Re-enable them from system preferences to receive reminders.
                   </p>
                 )}
                 {notificationPermission === 'unsupported' && (
                   <p className="settings-note warning">Notifications are not supported on this device.</p>
                 )}
+
+                <div className={`settings-subsection${!notificationsEnabled ? ' disabled' : ''}`}>
+                  <div className="settings-row">
+                    <div>
+                      <span className="settings-label">At prayer time</span>
+                      <p className="settings-description">Send a reminder right when the prayer begins.</p>
+                    </div>
+                    <label className="settings-toggle" htmlFor="settings-send-at-time">
+                      <input
+                        id="settings-send-at-time"
+                        type="checkbox"
+                        checked={notificationConfig.sendAtPrayerTime}
+                        onChange={handleReminderVariantToggle('sendAtPrayerTime')}
+                        disabled={!notificationsEnabled}
+                      />
+                      <span>{notificationConfig.sendAtPrayerTime ? 'On' : 'Off'}</span>
+                    </label>
+                  </div>
+
+                  <div className="settings-row">
+                    <div>
+                      <span className="settings-label">Before prayer</span>
+                      <p className="settings-description">Get a reminder ahead of time.</p>
+                    </div>
+                    <label className="settings-toggle" htmlFor="settings-send-before">
+                      <input
+                        id="settings-send-before"
+                        type="checkbox"
+                        checked={notificationConfig.sendBefore}
+                        onChange={handleReminderVariantToggle('sendBefore')}
+                        disabled={!notificationsEnabled}
+                      />
+                      <span>{notificationConfig.sendBefore ? 'On' : 'Off'}</span>
+                    </label>
+                  </div>
+                  {notificationConfig.sendBefore && (
+                    <div className="settings-row settings-row-inline">
+                      <label className="settings-field-label" htmlFor="settings-minutes-before">
+                        Minutes before
+                      </label>
+                      <div className="settings-field">
+                        <input
+                          id="settings-minutes-before"
+                          type="number"
+                          min={0}
+                          max={MAX_NOTIFICATION_OFFSET_MINUTES}
+                          step={1}
+                          value={notificationConfig.minutesBefore}
+                          onChange={handleLeadMinutesChange('minutesBefore')}
+                          disabled={!notificationsEnabled}
+                        />
+                        <span className="settings-field-unit">min</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="settings-row">
+                    <div>
+                      <span className="settings-label">Prayer check-in</span>
+                      <p className="settings-description">Ask whether you prayed after each prayer begins.</p>
+                    </div>
+                    <label className="settings-toggle" htmlFor="settings-send-after">
+                      <input
+                        id="settings-send-after"
+                        type="checkbox"
+                        checked={notificationConfig.sendAfter}
+                        onChange={handleReminderVariantToggle('sendAfter')}
+                        disabled={!notificationsEnabled}
+                      />
+                      <span>{notificationConfig.sendAfter ? 'On' : 'Off'}</span>
+                    </label>
+                  </div>
+                  {notificationConfig.sendAfter && (
+                    <div className="settings-row settings-row-inline">
+                      <label className="settings-field-label" htmlFor="settings-minutes-after">
+                        Minutes after start
+                      </label>
+                      <div className="settings-field">
+                        <input
+                          id="settings-minutes-after"
+                          type="number"
+                          min={0}
+                          max={MAX_NOTIFICATION_OFFSET_MINUTES}
+                          step={1}
+                          value={notificationConfig.minutesAfter}
+                          onChange={handleLeadMinutesChange('minutesAfter')}
+                          disabled={!notificationsEnabled}
+                        />
+                        <span className="settings-field-unit">min</span>
+                      </div>
+                    </div>
+                  )}
+                  {notificationConfig.sendAfter && (
+                    <p className="settings-note">
+                      Desktop notifications show quick `Yes` and `No` actions, and `No` adds that prayer to the missed
+                      count on the dashboard.
+                    </p>
+                  )}
+                </div>
               </section>
+
+              <section className="settings-section">
+                <span className="settings-label">Prayer selection</span>
+                <p className="settings-description">Choose which prayers should trigger desktop reminders.</p>
+                <div className={`settings-prayer-grid${!notificationsEnabled ? ' disabled' : ''}`}>
+                  {notificationPrayers.map((prayer) => {
+                    const isEnabled = notificationConfig.enabledPrayers[prayer.name as NotifiablePrayerName];
+                    return (
+                      <label
+                        key={prayer.name}
+                        className={`settings-prayer${!notificationsEnabled ? ' disabled' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(isEnabled)}
+                          onChange={handlePrayerToggle(prayer.name as NotifiablePrayerName)}
+                          disabled={!notificationsEnabled}
+                        />
+                        <span>{prayer.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </section>
+
               <section className="settings-section">
                 <div className="settings-row">
                   <div>
-                    <span className="settings-label">Lead time</span>
-                    <p className="settings-description">Choose how long before each prayer you are notified.</p>
+                    <span className="settings-label">Tahajjud reminder</span>
+                    <p className="settings-description">
+                      Keep the desktop app aligned with the mobile tahajjud setup.
+                    </p>
                   </div>
-                  <div className="settings-field">
+                  <label className="settings-toggle" htmlFor="settings-tahajjud-toggle">
                     <input
-                      type="number"
-                      min={0}
-                      max={MAX_NOTIFICATION_LEAD_MINUTES}
-                      step={1}
-                      value={notificationPreferences.leadMinutes}
-                      onChange={handleLeadMinutesChange}
-                      disabled={!notificationsEnabled}
-                      aria-label="Minutes before prayer to notify"
+                      id="settings-tahajjud-toggle"
+                      type="checkbox"
+                      checked={tahajjudSettings.enabled}
+                      onChange={handleTahajjudToggle}
+                      disabled={tahajjudSectionDisabled}
                     />
-                    <span className="settings-field-unit">min</span>
+                    <span>{tahajjudSettings.enabled ? 'Enabled' : 'Disabled'}</span>
+                  </label>
+                </div>
+
+                <div className={`settings-subsection${tahajjudSectionDisabled ? ' disabled' : ''}`}>
+                  <div className="settings-row">
+                    <div>
+                      <span className="settings-label">Reminder method</span>
+                      <p className="settings-description">
+                        Switch between a fixed time and the night-based automatic modes.
+                      </p>
+                    </div>
+                    <div className="settings-field settings-select-field">
+                      <select
+                        className="settings-select"
+                        value={tahajjudSettings.method}
+                        onChange={handleTahajjudMethodChange}
+                        disabled={tahajjudSectionDisabled}
+                        aria-label="Tahajjud reminder method"
+                      >
+                        {TAHAJJUD_METHOD_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <p className="settings-note">
+                    {TAHAJJUD_METHOD_OPTIONS.find((option) => option.value === tahajjudSettings.method)?.description}
+                  </p>
+
+                  {tahajjudSettings.method === 'custom' && (
+                    <div className="settings-row settings-row-inline">
+                      <label className="settings-field-label" htmlFor="settings-tahajjud-time">
+                        Reminder time
+                      </label>
+                      <div className="settings-field">
+                        <input
+                          id="settings-tahajjud-time"
+                          type="time"
+                          value={tahajjudSettings.customTime}
+                          onChange={handleTahajjudTimeChange}
+                          disabled={tahajjudSectionDisabled}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="settings-row settings-row-inline">
+                    <label className="settings-field-label" htmlFor="settings-tahajjud-lead">
+                      Minutes before
+                    </label>
+                    <div className="settings-field">
+                      <input
+                        id="settings-tahajjud-lead"
+                        type="number"
+                        min={0}
+                        max={MAX_TAHAJJUD_LEAD_MINUTES}
+                        step={1}
+                        value={tahajjudSettings.leadMinutes}
+                        onChange={handleTahajjudLeadMinutesChange}
+                        disabled={tahajjudSectionDisabled}
+                      />
+                      <span className="settings-field-unit">min</span>
+                    </div>
                   </div>
                 </div>
-              </section>
-              <section className="settings-section">
-                <span className="settings-label">Prayer selection</span>
-                <p className="settings-description">Select which prayers will trigger reminders.</p>
-                {visiblePrayers.length ? (
-                  <div className="settings-prayer-grid">
-                    {visiblePrayers.map((prayer: PrayerTime) => {
-                      const isEnabled = notificationPreferences.perPrayer[prayer.name] ?? true;
-                      return (
-                        <label
-                          key={prayer.name}
-                          className={`settings-prayer${!notificationsEnabled ? ' disabled' : ''}`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={Boolean(isEnabled)}
-                            onChange={handlePrayerToggle(prayer.name)}
-                            disabled={!notificationsEnabled}
-                          />
-                          <span>{prayer.name}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="settings-note">Prayer schedule unavailable. Try refreshing.</p>
+
+                <p className="settings-note">
+                  {activeLocation
+                    ? `Preview: ${formatDisplayTime(
+                        tahajjudPreview.time,
+                        twentyFourHourClock
+                      )} • ${tahajjudMethodLabel}${
+                        tahajjudSettings.leadMinutes > 0
+                          ? ` • ${tahajjudSettings.leadMinutes} min before`
+                          : ' • at reminder time'
+                      }`
+                    : 'Choose a location first to preview the tahajjud reminder.'}
+                </p>
+                {!notificationsEnabled && tahajjudSettings.enabled && (
+                  <p className="settings-note warning">
+                    Tahajjud is saved, but it will only notify after desktop reminders are enabled.
+                  </p>
                 )}
               </section>
             </div>
+
             <div className="settings-actions">
-              <button className="settings-action primary" onClick={handleCloseSettings}>
+              <button
+                className="settings-action primary"
+                onClick={() => {
+                  setSettingsOpen(false);
+                }}
+              >
                 Done
               </button>
             </div>
           </div>
         </div>
       )}
+
       <div className="shell">
         <header className="topbar">
           <div className="brand">
-            <div className="brand-mark">PT</div>
-            <div>
-              <h1>Prayer Rhythm</h1>
-              <p>Craft a calm flow for every prayer across your day.</p>
+            <div className="brand-mark">ST</div>
+            <div className="brand-copy">
+              <h1>Salah Time</h1>
+              <p>{locationDetail ? `${locationSummary} • ${locationDetail}` : locationSummary}</p>
             </div>
           </div>
-          <div className="top-actions">
-            <div className="top-meta">
-              <span className="chip">
-                {activeLocation ? `${activeLocation.city}, ${activeLocation.country}` : 'Locating...'}
-              </span>
-              {activeLocation?.timezone && <span className="chip subtle">{activeLocation.timezone}</span>}
-              <span className="chip subtle">{DEFAULT_CALCULATION_METHOD}</span>
-            </div>
-            <div className="top-buttons">
-              {notificationsEnabled ? (
-                <span className="status-pill success">Reminders enabled</span>
-              ) : (
-                <button className="status-pill ghost" onClick={handleManageNotifications}>
-                  Enable reminders
-                </button>
-              )}
-              <button className="status-pill ghost settings-button" onClick={openSettings}>
-                Settings
+          <div className="top-buttons">
+            {notificationsEnabled ? (
+              <span className="status-pill success">Reminders on</span>
+            ) : (
+              <button className="status-pill ghost" onClick={handleManageNotifications}>
+                Enable reminders
               </button>
-            </div>
+            )}
+            <button
+              className="status-pill ghost settings-button"
+              onClick={() => {
+                setSettingsOpen(true);
+                setShowOnboarding(false);
+              }}
+            >
+              Settings
+            </button>
           </div>
         </header>
 
@@ -971,91 +1517,108 @@ function App() {
           {loading ? (
             <div className="state-card">Loading prayer times...</div>
           ) : prayerTimes ? (
-            <div className="dashboard">
-              <section className="summary-panel">
-                <div className="hero-card">
-                  <span className="hero-label">Current moment</span>
-                  <div className="hero-time">{currentTimeDisplay || '--:--'}</div>
-                  <div className="hero-date">{currentDateDisplay || prayerTimes.date}</div>
-                  <div className="hero-meta">
-                    <span className="chip">
-                      {activeLocation ? `${activeLocation.city}, ${activeLocation.country}` : 'Locating...'}
-                    </span>
-                    {activeLocation?.timezone && <span className="chip subtle">{activeLocation.timezone}</span>}
-                    {prayerTimes.hijriDate && <span className="chip subtle">{prayerTimes.hijriDate}</span>}
+            <div className="dashboard-simple">
+              <section className="overview-card">
+                <div className="overview-grid">
+                  <div className="overview-block">
+                    <span className="overview-label">Current moment</span>
+                    <div className="overview-current">{currentTimeDisplay || '--:--'}</div>
+                    <div className="overview-date">{currentDateDisplay || prayerTimes.date}</div>
                   </div>
+
+                  {nextPrayer && (
+                    <div className="overview-block overview-block-next">
+                      <span className="overview-label">Next prayer</span>
+                      <div className="overview-next-row">
+                        <span className="overview-next-name">{nextPrayer.name}</span>
+                        <span className="overview-next-time">{formatDisplayTime(nextPrayer.time, twentyFourHourClock)}</span>
+                      </div>
+                      <div className="overview-next-countdown">
+                        {timeUntilNext === 'Now' ? 'Starting now' : `in ${timeUntilNext}`}
+                      </div>
+                      <div className="progress-track" aria-hidden="true">
+                        <div
+                          className="progress-bar"
+                          style={{ width: `${Math.min(100, Math.max(0, nextPrayerProgress))}%` }}
+                        />
+                      </div>
+                      <div className="progress-meta">
+                        <span className="progress-label">
+                          {previousPrayer
+                            ? `${previousPrayer.name} • ${formatDisplayTime(previousPrayer.time, twentyFourHourClock)}`
+                            : 'Awaiting previous prayer'}
+                        </span>
+                        <span className="progress-label">Toward {nextPrayer.name}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {nextPrayer && (
-                  <div className="next-card">
-                    <div className="next-card-header">
-                      <span className="label">Next prayer</span>
-                      <span className="next-name">{nextPrayer.name}</span>
-                    </div>
-                    <div className="next-card-main">
-                      <span className="next-time">{nextPrayer.time}</span>
-                      <span className="next-countdown">
-                        {timeUntilNext === 'Now' ? 'Starting now' : `in ${timeUntilNext}`}
-                      </span>
-                    </div>
-                    <div className="progress-track" aria-hidden="true">
-                      <div
-                        className="progress-bar"
-                        style={{ width: `${Math.min(100, Math.max(0, nextPrayerProgress))}%` }}
-                      />
-                    </div>
-                    <div className="progress-meta">
-                      <span className="progress-label">
-                        {previousPrayer
-                          ? `${previousPrayer.name} • ${previousPrayer.time}`
-                          : 'Awaiting previous prayer'}
-                      </span>
-                      <span className="progress-label">Toward {nextPrayer.name}</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="insight-grid">
-                  {firstPrayer && (
-                    <div className="insight-card">
-                      <span className="insight-label">First prayer</span>
-                      <span className="insight-value">{firstPrayer.time}</span>
-                      <span className="insight-subtext">{firstPrayer.name}</span>
-                    </div>
-                  )}
-                  {sunrisePrayer && (
-                    <div className="insight-card">
-                      <span className="insight-label">Sunrise</span>
-                      <span className="insight-value">{sunrisePrayer.time}</span>
-                      <span className="insight-subtext">Golden hour begins</span>
-                    </div>
-                  )}
-                  {lastPrayer && (
-                    <div className="insight-card">
-                      <span className="insight-label">Final prayer</span>
-                      <span className="insight-value">{lastPrayer.time}</span>
-                      <span className="insight-subtext">{lastPrayer.name}</span>
-                    </div>
-                  )}
+                <div className="overview-meta">
+                  {prayerTimes.hijriDate && <span className="chip subtle">{prayerTimes.hijriDate}</span>}
+                  <span className="chip subtle">{calculationMethodLabel}</span>
+                  {tahajjudSettings.enabled && <span className="chip subtle">{tahajjudStatusLabel}</span>}
+                  {totalMissedPrayers > 0 && <span className="chip warning">Missed {totalMissedPrayers}</span>}
                 </div>
               </section>
 
-              <section className="schedule-panel">
+              {pendingPrayerCheck ? (
+                <div className="checkin-card">
+                  <div className="checkin-card-content">
+                    <span className="checkin-label">Prayer check-in</span>
+                    <strong className="checkin-title">Did you pray {pendingPrayerCheck.prayerName}?</strong>
+                    <p className="checkin-text">
+                      Started at {formatDisplayTime(pendingPrayerCheck.prayerTime, twentyFourHourClock)}
+                      {prayerCheckState.pending.length > 1
+                        ? ` • ${prayerCheckState.pending.length} reminders waiting`
+                        : ' • Answer this to keep the missed-prayer count accurate.'}
+                    </p>
+                  </div>
+                  <div className="checkin-actions">
+                    <button
+                      className="settings-secondary-button"
+                      onClick={() => {
+                        void handlePrayerCheckResponse(pendingPrayerCheck.id, 'yes');
+                      }}
+                    >
+                      Yes
+                    </button>
+                    <button
+                      className="settings-secondary-button danger"
+                      onClick={() => {
+                        void handlePrayerCheckResponse(pendingPrayerCheck.id, 'no');
+                      }}
+                    >
+                      No
+                    </button>
+                  </div>
+                </div>
+              ) : totalMissedPrayers > 0 ? (
+                <div className="checkin-card checkin-card-muted">
+                  <div className="checkin-card-content">
+                    <span className="checkin-label">Missed prayers</span>
+                    <strong className="checkin-title">{totalMissedPrayers} recorded</strong>
+                    <p className="checkin-text">{missedPrayerSummaryText}</p>
+                  </div>
+                </div>
+              ) : null}
+
+              <section className="schedule-panel schedule-panel-simple">
                 <div className="panel-heading">
                   <h2>Today's Schedule</h2>
-                  {prayerTimes.hijriDate && <span className="chip subtle">{prayerTimes.hijriDate}</span>}
                 </div>
-                <p className="panel-subtitle">
-                  Track each prayer as your day progresses and stay mindful of the moments ahead.
-                </p>
                 <div className="timeline-list">
-                  {visiblePrayers.map((prayer: PrayerTime) => {
+                  {visiblePrayers.map((prayer) => {
                     const now = new Date();
                     const isNext = nextPrayer?.name === prayer.name;
                     const todayOccurrence = PrayerTimeCalculator.getOccurrenceForDate(prayer, now);
                     const isPast = !isNext && todayOccurrence.getTime() < now.getTime();
                     const statusClass = isNext ? 'next' : isPast ? 'past' : 'upcoming';
                     const statusText = isNext ? 'Next' : isPast ? 'Completed' : 'Upcoming';
+                    const sunriseLabel =
+                      prayer.name === 'Fajr' && sunrisePrayer
+                        ? `Sunrise ${formatDisplayTime(sunrisePrayer.time, twentyFourHourClock)}`
+                        : null;
 
                     let relativeLabel = '';
                     if (isNext) {
@@ -1072,11 +1635,13 @@ function App() {
 
                     return (
                       <div key={prayer.name} className={`timeline-card ${statusClass}`}>
-                        <div className="timeline-dot" />
                         <div className="timeline-content">
                           <div className="timeline-heading">
-                            <span className="timeline-name">{prayer.name}</span>
-                            <span className="timeline-time">{prayer.time}</span>
+                            <div className="timeline-title-group">
+                              <span className="timeline-name">{prayer.name}</span>
+                              {sunriseLabel ? <span className="timeline-subtext">{sunriseLabel}</span> : null}
+                            </div>
+                            <span className="timeline-time">{formatDisplayTime(prayer.time, twentyFourHourClock)}</span>
                           </div>
                           <div className="timeline-meta">
                             <span className={`timeline-status ${statusClass}`}>{statusText}</span>

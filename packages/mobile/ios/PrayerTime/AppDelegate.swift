@@ -3,8 +3,6 @@ import React
 import React_RCTAppDelegate
 import ReactAppDependencyProvider
 
-import RNNotifications
-
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
   var window: UIWindow?

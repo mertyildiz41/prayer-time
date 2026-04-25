@@ -5,7 +5,7 @@ import { AppState, View } from 'react-native';
 
 import ReactPush from 'react-push-client';
 
-import { NavigationContainer, StackActions } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer, StackActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Country } from 'country-state-city';
 
@@ -38,11 +38,22 @@ import {
   scheduleTahajjudNotification,
   cancelTahajjudNotification,
   resetNotificationScheduleCache,
+  subscribeToPrayerCheckOpens,
 } from './notifications/notificationService';
 import { settingsStorage } from './storage/settingsStorage';
 import { syncUpdates } from './services/reactPushService';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const APP_BACKGROUND_COLOR = '#0a0e1a';
+const navigationTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: APP_BACKGROUND_COLOR,
+    card: APP_BACKGROUND_COLOR,
+    border: 'transparent',
+  },
+};
 
 const SIGNIFICANT_TIME_CHANGE_THRESHOLD_MS = 60 * 1000;
 const TIME_CHANGE_POLL_INTERVAL_MS = 30 * 1000;
@@ -221,22 +232,26 @@ function App() {
   
   return (
     <I18nProvider>
-      <NotificationBootstrapper />
-      <SafeAreaProvider style={{ flex: 1, backgroundColor: '#0a0e1a' }}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: 'rgba(10, 14, 26, 0.85)' }}>
+      <NotificationBootstrapper navigationRef={navigationRef} location={location} />
+      <SafeAreaProvider style={{ flex: 1, backgroundColor: APP_BACKGROUND_COLOR }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: APP_BACKGROUND_COLOR }}>
           <NavigationContainer
             ref={navigationRef}
+            theme={navigationTheme}
             onReady={updateCurrentRoute}
             onStateChange={updateCurrentRoute}
           >
             <Stack.Navigator
               initialRouteName={location ? 'PrayerTime' : 'Onboarding'}
-              screenOptions={{ animation: transitionAnimation }}
+              screenOptions={{
+                animation: transitionAnimation,
+                contentStyle: { backgroundColor: APP_BACKGROUND_COLOR },
+              }}
             >
               <Stack.Screen name="PrayerTime" options={{ headerShown: false }}>
                 {() => {
                   if (!location) {
-                    return <View style={{ flex: 1 }} />;
+                    return <View style={{ flex: 1, backgroundColor: APP_BACKGROUND_COLOR }} />;
                   }
 
                   return (
@@ -295,7 +310,13 @@ function App() {
   );
 }
 
-const NotificationBootstrapper = () => {
+const NotificationBootstrapper = ({
+  navigationRef,
+  location,
+}: {
+  navigationRef: React.RefObject<any>;
+  location: StoredLocation;
+}) => {
   const { t } = useTranslation();
   const { language } = useLanguage();
   const lastTimeCheckRef = useRef<number>(Date.now());
@@ -312,12 +333,13 @@ const NotificationBootstrapper = () => {
         if (!storedLocation) {
           return;
         }
+        const calculationMethod = (await settingsStorage.getCalculationMethod()) || 'Diyanet';
 
         const schedules = generatePrayerSchedules({
           location: storedLocation,
           startDate: new Date(),
           days: 30,
-          method: 'Karachi',
+          method: calculationMethod,
         });
 
         if (!schedules.length) {
@@ -358,6 +380,8 @@ const NotificationBootstrapper = () => {
   );
 
   useEffect(() => {
+    initializeNotifications();
+
     // Check for OTA updates on app start
     syncUpdates().catch((error) => {
       console.error('Failed to sync ReactPush updates:', error);
@@ -367,6 +391,25 @@ const NotificationBootstrapper = () => {
       console.error('Failed to ensure prayer notifications on launch.', error);
     });
   }, [refreshNotifications]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToPrayerCheckOpens(() => {
+      if (!location) {
+        return;
+      }
+
+      const navigation = navigationRef.current;
+      if (!navigation) {
+        return;
+      }
+
+      navigation.dispatch(StackActions.replace('PrayerTime', { location }));
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [location, navigationRef]);
 
   useEffect(() => {
     const handleAppStateChange = (nextState: string) => {

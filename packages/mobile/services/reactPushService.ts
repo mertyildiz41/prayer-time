@@ -22,7 +22,19 @@ export const initializeReactPush = () => {
     },
     onUpdateDownloaded: (update) => {
       console.log('[ReactPush] Update downloaded:', update);
-      // Optionally prompt user to restart the app
+      if (Platform.OS === 'android') {
+        Alert.alert(
+          'Update Ready',
+          'A new version has been downloaded. Close and reopen the app to apply it.',
+          [
+            {
+              text: 'OK',
+            },
+          ],
+        );
+        return;
+      }
+
       Alert.alert(
         'Update Available',
         'A new version has been downloaded. Restart the app to apply the update.',
@@ -34,7 +46,6 @@ export const initializeReactPush = () => {
           {
             text: 'Restart Now',
             onPress: () => {
-              // The update will be applied on next restart
               try {
                 const RNRestart = require('react-native-restart').default;
                 RNRestart.restart();
@@ -89,4 +100,3 @@ export default {
   syncUpdates,
   getReactPushInstance,
 };
-

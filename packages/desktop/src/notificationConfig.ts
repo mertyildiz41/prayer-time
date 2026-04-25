@@ -1,13 +1,11 @@
-export const PRAYER_NOTIFICATION_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'] as const;
+import type { PrayerTime } from '@prayer-time/shared';
 
-export type PrayerName = (typeof PRAYER_NOTIFICATION_NAMES)[number];
+export const NOTIFIABLE_PRAYER_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'] as const;
 
-export const NOTIFICATION_VARIANTS = ['at', 'before', 'after'] as const;
-
-export type NotificationVariant = (typeof NOTIFICATION_VARIANTS)[number];
+export type NotifiablePrayerName = (typeof NOTIFIABLE_PRAYER_NAMES)[number];
 
 export type NotificationScheduleConfig = {
-  enabledPrayers: Record<PrayerName, boolean>;
+  enabledPrayers: Record<NotifiablePrayerName, boolean>;
   sendAtPrayerTime: boolean;
   sendBefore: boolean;
   sendAfter: boolean;
@@ -15,7 +13,15 @@ export type NotificationScheduleConfig = {
   minutesAfter: number;
 };
 
-const DEFAULT_ENABLED_PRAYERS: Record<PrayerName, boolean> = {
+type LegacyNotificationPreferences = {
+  leadMinutes?: number;
+  perPrayer?: Partial<Record<PrayerTime['name'], boolean>>;
+};
+
+export const MAX_NOTIFICATION_OFFSET_MINUTES = 180;
+const LEGACY_AFTER_DEFAULT_MINUTES = 10;
+
+const DEFAULT_ENABLED_PRAYERS: Record<NotifiablePrayerName, boolean> = {
   Fajr: true,
   Dhuhr: true,
   Asr: true,
@@ -32,26 +38,35 @@ export const DEFAULT_NOTIFICATION_CONFIG: NotificationScheduleConfig = {
   minutesAfter: 45,
 };
 
-const MIN_OFFSET_MINUTES = 0;
-const MAX_OFFSET_MINUTES = 180;
-const LEGACY_AFTER_DEFAULT_MINUTES = 10;
-
 const clampMinutes = (value: number): number => {
   if (!Number.isFinite(value)) {
     return 0;
   }
+
   const rounded = Math.round(value);
-  if (rounded < MIN_OFFSET_MINUTES) {
-    return MIN_OFFSET_MINUTES;
+  if (rounded < 0) {
+    return 0;
   }
-  if (rounded > MAX_OFFSET_MINUTES) {
-    return MAX_OFFSET_MINUTES;
+
+  if (rounded > MAX_NOTIFICATION_OFFSET_MINUTES) {
+    return MAX_NOTIFICATION_OFFSET_MINUTES;
   }
+
   return rounded;
 };
 
+const isLegacyConfig = (
+  value: Partial<NotificationScheduleConfig> | LegacyNotificationPreferences | null | undefined
+): value is LegacyNotificationPreferences => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  return 'leadMinutes' in value || 'perPrayer' in value;
+};
+
 export const normalizeNotificationConfig = (
-  config?: Partial<NotificationScheduleConfig> | null,
+  config?: Partial<NotificationScheduleConfig> | LegacyNotificationPreferences | null
 ): NotificationScheduleConfig => {
   if (!config) {
     return {
@@ -64,18 +79,44 @@ export const normalizeNotificationConfig = (
     };
   }
 
-  const normalizedEnabled: Record<PrayerName, boolean> = {
+  if (isLegacyConfig(config)) {
+    const normalizedEnabled = { ...DEFAULT_NOTIFICATION_CONFIG.enabledPrayers };
+
+    for (const prayerName of NOTIFIABLE_PRAYER_NAMES) {
+      const legacyValue = config.perPrayer?.[prayerName];
+      if (typeof legacyValue === 'boolean') {
+        normalizedEnabled[prayerName] = legacyValue;
+      }
+    }
+
+    const legacyLead = clampMinutes(
+      typeof config.leadMinutes === 'number'
+        ? config.leadMinutes
+        : DEFAULT_NOTIFICATION_CONFIG.minutesBefore
+    );
+
+    return {
+      enabledPrayers: normalizedEnabled,
+      sendAtPrayerTime: false,
+      sendBefore: true,
+      sendAfter: false,
+      minutesBefore: legacyLead,
+      minutesAfter: DEFAULT_NOTIFICATION_CONFIG.minutesAfter,
+    };
+  }
+
+  const normalizedEnabled: Record<NotifiablePrayerName, boolean> = {
     ...DEFAULT_NOTIFICATION_CONFIG.enabledPrayers,
   };
 
-  for (const name of PRAYER_NOTIFICATION_NAMES) {
-    if (typeof config.enabledPrayers?.[name] === 'boolean') {
-      normalizedEnabled[name] = Boolean(config.enabledPrayers[name]);
+  for (const prayerName of NOTIFIABLE_PRAYER_NAMES) {
+    if (typeof config.enabledPrayers?.[prayerName] === 'boolean') {
+      normalizedEnabled[prayerName] = Boolean(config.enabledPrayers[prayerName]);
     }
   }
 
   const looksLikeLegacyDefault =
-    PRAYER_NOTIFICATION_NAMES.every((name) => normalizedEnabled[name]) &&
+    NOTIFIABLE_PRAYER_NAMES.every((prayerName) => normalizedEnabled[prayerName]) &&
     (typeof config.sendAtPrayerTime === 'undefined' || config.sendAtPrayerTime === true) &&
     (typeof config.sendBefore === 'undefined' || config.sendBefore === false) &&
     config.sendAfter === false &&
@@ -101,31 +142,14 @@ export const normalizeNotificationConfig = (
     minutesBefore: clampMinutes(
       typeof config.minutesBefore === 'number'
         ? config.minutesBefore
-        : DEFAULT_NOTIFICATION_CONFIG.minutesBefore,
+        : DEFAULT_NOTIFICATION_CONFIG.minutesBefore
     ),
     minutesAfter: clampMinutes(
       typeof config.minutesAfter === 'number'
         ? looksLikeLegacyDefault
           ? DEFAULT_NOTIFICATION_CONFIG.minutesAfter
           : config.minutesAfter
-        : DEFAULT_NOTIFICATION_CONFIG.minutesAfter,
+        : DEFAULT_NOTIFICATION_CONFIG.minutesAfter
     ),
   };
-};
-
-export const buildNotificationConfigKey = (
-  config: NotificationScheduleConfig,
-): string => {
-  const flags = [
-    config.sendAtPrayerTime ? '1' : '0',
-    config.sendBefore ? '1' : '0',
-    config.sendAfter ? '1' : '0',
-  ].join('');
-
-  const minutes = `${config.minutesBefore}:${config.minutesAfter}`;
-  const enabled = PRAYER_NOTIFICATION_NAMES.map((name) =>
-    config.enabledPrayers[name] ? '1' : '0',
-  ).join('');
-
-  return `${flags}|${minutes}|${enabled}`;
 };

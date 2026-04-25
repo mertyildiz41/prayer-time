@@ -14,6 +14,8 @@ electron_1.contextBridge.exposeInMainWorld('electron', {
         },
     },
     calculatePrayerTimes: (date, location, method) => electron_1.ipcRenderer.invoke('calculate-prayer-times', { date, location, method }),
-    configureNotifications: (enabled, times, preferences) => electron_1.ipcRenderer.send('notifications-configure', { enabled, times, preferences }),
+    configureNotifications: (enabled, times, preferences, tahajjud) => electron_1.ipcRenderer.send('notifications-configure', { enabled, times, preferences, tahajjud }),
+    getPrayerCheckState: () => electron_1.ipcRenderer.invoke('prayer-check-state:get'),
+    respondToPrayerCheck: (id, response) => electron_1.ipcRenderer.invoke('prayer-check:respond', { id, response }),
 });
 //# sourceMappingURL=preload.js.map

@@ -25,3 +25,4 @@ packages/mobile/ios/.DS_Store
 /packages/desktop/dist
 /packages/mobile/ios/build
 packages/mobile/ios/Podfile.lock
+/packages/desktop/release

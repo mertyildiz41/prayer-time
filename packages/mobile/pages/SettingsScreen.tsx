@@ -6,7 +6,6 @@ import {
   Text,
   View,
   TouchableOpacity,
-  Switch,
   ScrollView,
   Alert,
   TextInput,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 import { StackActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import Icon from '@react-native-vector-icons/material-icons';
+import ToggleSwitch from '../components/ToggleSwitch';
 
 import { SUPPORTED_LANGUAGES, useLanguage, useTranslation } from '../i18n';
 import type { LanguageCode, TranslationKey } from '../i18n/translations';
@@ -64,31 +64,24 @@ const SettingsScreen = () => {
   const navigation = useNavigation();
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
-  const initialNotificationConfig = useMemo(
-    () => settingsStorage.getNotificationConfig(),
-    [],
-  );
-  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(
-    () => settingsStorage.getNotificationsEnabled(),
-  );
-  const [twentyFourHourClock, setTwentyFourHourClock] = useState<boolean>(
-    () => settingsStorage.getTwentyFourHourPreference(),
-  );
+  const defaultNotificationConfig = useMemo(() => normalizeNotificationConfig(), []);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [twentyFourHourClock, setTwentyFourHourClock] = useState(false);
   const [updatingNotifications, setUpdatingNotifications] = useState(false);
   const [schedulingNotifications, setSchedulingNotifications] = useState(false);
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
-  const [notificationConfig, setNotificationConfig] = useState(initialNotificationConfig);
+  const [notificationConfig, setNotificationConfig] = useState(defaultNotificationConfig);
   const [beforeMinutesInput, setBeforeMinutesInput] = useState(
-    String(initialNotificationConfig.minutesBefore),
+    String(defaultNotificationConfig.minutesBefore),
   );
   const [afterMinutesInput, setAfterMinutesInput] = useState(
-    String(initialNotificationConfig.minutesAfter),
+    String(defaultNotificationConfig.minutesAfter),
   );
-  const [tahajjudEnabled, setTahajjudEnabled] = useState<boolean>(() => settingsStorage.getTahajjudReminderEnabled());
-  const [tahajjudTime, setTahajjudTime] = useState<string | null>(() => settingsStorage.getTahajjudReminderTime());
-  const [tahajjudMethod, setTahajjudMethod] = useState<'custom' | 'lastThird' | 'middle'>(() => settingsStorage.getTahajjudReminderMethod());
-  const [tahajjudLeadMinutes, setTahajjudLeadMinutes] = useState<number>(() => settingsStorage.getTahajjudReminderLeadMinutes());
-  const [calculationMethod, setCalculationMethod] = useState<string>(() => settingsStorage.getCalculationMethod() || 'Diyanet');
+  const [tahajjudEnabled, setTahajjudEnabled] = useState(false);
+  const [tahajjudTime, setTahajjudTime] = useState<string | null>(null);
+  const [tahajjudMethod, setTahajjudMethod] = useState<'custom' | 'lastThird' | 'middle'>('custom');
+  const [tahajjudLeadMinutes, setTahajjudLeadMinutes] = useState(0);
+  const [calculationMethod, setCalculationMethod] = useState('Diyanet');
   const [calculationMethodMenuOpen, setCalculationMethodMenuOpen] = useState(false);
 
   const translatePrayerName = useCallback(
@@ -102,10 +95,35 @@ const SettingsScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
-      setTahajjudEnabled(settingsStorage.getTahajjudReminderEnabled());
-      setTahajjudTime(settingsStorage.getTahajjudReminderTime());
-      setTahajjudMethod(settingsStorage.getTahajjudReminderMethod());
-      setTahajjudLeadMinutes(settingsStorage.getTahajjudReminderLeadMinutes());
+      let isActive = true;
+
+      const refreshTahajjudState = async () => {
+        try {
+          const [enabled, time, method, leadMinutes] = await Promise.all([
+            settingsStorage.getTahajjudReminderEnabled(),
+            settingsStorage.getTahajjudReminderTime(),
+            settingsStorage.getTahajjudReminderMethod(),
+            settingsStorage.getTahajjudReminderLeadMinutes(),
+          ]);
+
+          if (!isActive) {
+            return;
+          }
+
+          setTahajjudEnabled(enabled);
+          setTahajjudTime(time);
+          setTahajjudMethod(method);
+          setTahajjudLeadMinutes(leadMinutes);
+        } catch (error) {
+          console.error('Failed to refresh tahajjud settings.', error);
+        }
+      };
+
+      refreshTahajjudState();
+
+      return () => {
+        isActive = false;
+      };
     }, []),
   );
 
@@ -118,6 +136,59 @@ const SettingsScreen = () => {
     { key: 'Egyptian', label: 'Egyptian' },
     { key: 'UmmAlQura', label: 'Umm al-Qura' },
   ], []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadSettings = async () => {
+      try {
+        const [
+          storedNotificationsEnabled,
+          storedTwentyFourHourClock,
+          storedNotificationConfig,
+          storedTahajjudEnabled,
+          storedTahajjudTime,
+          storedTahajjudMethod,
+          storedTahajjudLeadMinutes,
+          storedCalculationMethod,
+        ] = await Promise.all([
+          settingsStorage.getNotificationsEnabled(),
+          settingsStorage.getTwentyFourHourPreference(),
+          settingsStorage.getNotificationConfig(),
+          settingsStorage.getTahajjudReminderEnabled(),
+          settingsStorage.getTahajjudReminderTime(),
+          settingsStorage.getTahajjudReminderMethod(),
+          settingsStorage.getTahajjudReminderLeadMinutes(),
+          settingsStorage.getCalculationMethod(),
+        ]);
+
+        if (!isActive) {
+          return;
+        }
+
+        const normalizedConfig = normalizeNotificationConfig(storedNotificationConfig);
+
+        setNotificationsEnabled(storedNotificationsEnabled);
+        setTwentyFourHourClock(storedTwentyFourHourClock);
+        setNotificationConfig(normalizedConfig);
+        setBeforeMinutesInput(String(normalizedConfig.minutesBefore));
+        setAfterMinutesInput(String(normalizedConfig.minutesAfter));
+        setTahajjudEnabled(storedTahajjudEnabled);
+        setTahajjudTime(storedTahajjudTime);
+        setTahajjudMethod(storedTahajjudMethod);
+        setTahajjudLeadMinutes(storedTahajjudLeadMinutes);
+        setCalculationMethod(storedCalculationMethod || 'Diyanet');
+      } catch (error) {
+        console.error('Failed to load settings.', error);
+      }
+    };
+
+    loadSettings();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
     setBeforeMinutesInput(String(notificationConfig.minutesBefore));
@@ -145,7 +216,7 @@ const SettingsScreen = () => {
           location: storedLocation,
           startDate: new Date(),
           days: 30,
-          method: 'Karachi',
+          method: calculationMethod,
         });
 
         if (!schedules.length) {
@@ -171,7 +242,7 @@ const SettingsScreen = () => {
         setSchedulingNotifications(false);
       }
     },
-    [notificationConfig, language, t, translatePrayerName],
+    [calculationMethod, notificationConfig, language, t, translatePrayerName],
   );
 
   useEffect(() => {
@@ -401,7 +472,7 @@ const SettingsScreen = () => {
                 {
                   text: t('notifications.openSettings'),
                   onPress: () => {
-                    openSettings().catch((error) => {
+                    openSettings('alarms').catch((error) => {
                       console.error('Failed to open settings for exact alarm permission.', error);
                     });
                   },
@@ -425,7 +496,7 @@ const SettingsScreen = () => {
           settingsStorage.setNotificationsEnabled(true);
 
           if (tahajjudEnabled && tahajjudTime) {
-            const leadMinutes = settingsStorage.getTahajjudReminderLeadMinutes();
+            const leadMinutes = await settingsStorage.getTahajjudReminderLeadMinutes();
             setTahajjudLeadMinutes(leadMinutes);
             const tahajjudScheduled = await scheduleTahajjudNotification({
               translator: t,
@@ -456,7 +527,7 @@ const SettingsScreen = () => {
   const handleTahajjudToggle = useCallback(
     async (value: boolean) => {
       if (value) {
-        const nextTime = settingsStorage.getTahajjudReminderTime();
+        const nextTime = await settingsStorage.getTahajjudReminderTime();
         setTahajjudTime(nextTime);
         if (!nextTime) {
           navigation.navigate('TahajjudSettings');
@@ -477,7 +548,7 @@ const SettingsScreen = () => {
 
         setUpdatingNotifications(true);
         try {
-          const leadMinutes = settingsStorage.getTahajjudReminderLeadMinutes();
+          const leadMinutes = await settingsStorage.getTahajjudReminderLeadMinutes();
           setTahajjudLeadMinutes(leadMinutes);
           const scheduled = await scheduleTahajjudNotification({
             translator: t,
@@ -488,7 +559,7 @@ const SettingsScreen = () => {
             throw new Error('tahajjud scheduling failed');
           }
           setTahajjudEnabled(true);
-          setTahajjudMethod(settingsStorage.getTahajjudReminderMethod());
+          setTahajjudMethod(await settingsStorage.getTahajjudReminderMethod());
           settingsStorage.setTahajjudReminderEnabled(true);
         } catch (error) {
           console.error('Failed to enable tahajjud reminder.', error);
@@ -547,12 +618,10 @@ const SettingsScreen = () => {
           <Text style={styles.rowTitle}>{t('settings.notifications.dailyReminders.title')}</Text>
           <Text style={styles.rowSubtitle}>{t('settings.notifications.dailyReminders.subtitle')}</Text>
         </View>
-        <Switch
+        <ToggleSwitch
           value={notificationsEnabled}
           onValueChange={handleNotificationsToggle}
           disabled={updatingNotifications || schedulingNotifications}
-          trackColor={{ false: '#1f2937', true: '#3b82f6' }}
-          thumbColor={notificationsEnabled ? '#93c5fd' : '#e5e7eb'}
         />
       </View>
 
@@ -574,11 +643,9 @@ const SettingsScreen = () => {
             <Text style={styles.rowTitle}>{t('settings.notifications.atTime.title')}</Text>
             <Text style={styles.rowSubtitle}>{t('settings.notifications.atTime.subtitle')}</Text>
           </View>
-          <Switch
+          <ToggleSwitch
             value={notificationConfig.sendAtPrayerTime}
             onValueChange={handleToggleAtTime}
-            trackColor={{ false: '#1f2937', true: '#3b82f6' }}
-            thumbColor={notificationConfig.sendAtPrayerTime ? '#93c5fd' : '#e5e7eb'}
             disabled={notificationControlsDisabled}
           />
         </View>
@@ -588,11 +655,9 @@ const SettingsScreen = () => {
             <Text style={styles.rowTitle}>{t('settings.notifications.before.title')}</Text>
             <Text style={styles.rowSubtitle}>{t('settings.notifications.before.subtitle')}</Text>
           </View>
-          <Switch
+          <ToggleSwitch
             value={notificationConfig.sendBefore}
             onValueChange={handleToggleBefore}
-            trackColor={{ false: '#1f2937', true: '#3b82f6' }}
-            thumbColor={notificationConfig.sendBefore ? '#93c5fd' : '#e5e7eb'}
             disabled={notificationControlsDisabled}
           />
         </View>
@@ -620,11 +685,9 @@ const SettingsScreen = () => {
             <Text style={styles.rowTitle}>{t('settings.notifications.after.title')}</Text>
             <Text style={styles.rowSubtitle}>{t('settings.notifications.after.subtitle')}</Text>
           </View>
-          <Switch
+          <ToggleSwitch
             value={notificationConfig.sendAfter}
             onValueChange={handleToggleAfter}
-            trackColor={{ false: '#1f2937', true: '#3b82f6' }}
-            thumbColor={notificationConfig.sendAfter ? '#93c5fd' : '#e5e7eb'}
             disabled={notificationControlsDisabled}
           />
         </View>
@@ -663,11 +726,9 @@ const SettingsScreen = () => {
             ]}
           >
             <Text style={styles.prayerToggleLabel}>{translatePrayerName(name)}</Text>
-            <Switch
+            <ToggleSwitch
               value={Boolean(notificationConfig.enabledPrayers[name])}
               onValueChange={(value) => handlePrayerToggle(name, value)}
-              trackColor={{ false: '#1f2937', true: '#3b82f6' }}
-              thumbColor={notificationConfig.enabledPrayers[name] ? '#93c5fd' : '#e5e7eb'}
               disabled={notificationControlsDisabled}
             />
           </View>
@@ -684,11 +745,10 @@ const SettingsScreen = () => {
               <Text style={styles.rowTitle}>{t('settings.notifications.tahajjud.title')}</Text>
               <Text style={styles.rowSubtitle}>{t('settings.notifications.tahajjud.subtitle')}</Text>
             </View>
-            <Switch
+            <ToggleSwitch
               value={tahajjudEnabled}
               onValueChange={handleTahajjudToggle}
-              trackColor={{ false: '#1f2937', true: '#2563eb' }}
-              thumbColor={tahajjudEnabled ? '#93c5fd' : '#e5e7eb'}
+              activeColor="#2563eb"
               disabled={tahajjudControlsDisabled}
             />
           </View>
@@ -764,11 +824,9 @@ const SettingsScreen = () => {
           <Text style={styles.rowTitle}>{t('settings.prayerTime.twentyFourHour.title')}</Text>
           <Text style={styles.rowSubtitle}>{t('settings.prayerTime.twentyFourHour.subtitle')}</Text>
         </View>
-        <Switch
+        <ToggleSwitch
           value={twentyFourHourClock}
           onValueChange={handleTwentyFourHourToggle}
-          trackColor={{ false: '#1f2937', true: '#3b82f6' }}
-          thumbColor={twentyFourHourClock ? '#93c5fd' : '#e5e7eb'}
         />
       </View>
 
@@ -861,6 +919,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: 'rgba(15, 23, 42, 0.75)',
     borderRadius: 16,
     paddingHorizontal: 20,
@@ -869,6 +928,7 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     marginRight: 12,
+    minWidth: 0,
   },
   rowTitle: {
     color: '#e2e8f0',
@@ -916,6 +976,7 @@ const styles = StyleSheet.create({
   notificationRowText: {
     flex: 1,
     marginRight: 12,
+    minWidth: 0,
   },
   offsetInputRow: {
     flexDirection: 'row',
@@ -979,6 +1040,7 @@ const styles = StyleSheet.create({
   tahajjudHeaderText: {
     flex: 1,
     marginRight: 12,
+    minWidth: 0,
   },
   tahajjudSummaryRow: {
     flexDirection: 'row',
@@ -1031,6 +1093,8 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   prayerToggleLabel: {
+    flex: 1,
+    marginRight: 12,
     color: '#cbd5f5',
     fontSize: 14,
     fontWeight: '500',

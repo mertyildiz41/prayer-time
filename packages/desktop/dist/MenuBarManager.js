@@ -7,6 +7,13 @@ exports.MenuBarManager = void 0;
 const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
 const shared_1 = require("@prayer-time/shared");
+const TRAY_REFRESH_INTERVAL_MS = 60 * 1000;
+const POPOVER_WIDTH = 360;
+const POPOVER_HEIGHT = 500;
+const MIN_POPOVER_HEIGHT = 220;
+const POPOVER_MARGIN = 12;
+const POPOVER_RESIZE_PADDING = 24;
+const MENU_PRAYER_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'];
 class MenuBarManager {
     constructor(options = {}) {
         this.options = options;
@@ -14,6 +21,9 @@ class MenuBarManager {
         this.latestPrayerTimes = null;
         this.popoverWindow = null;
         this.lastPopoverHtml = null;
+        this.contextMenu = null;
+        this.refreshTimer = null;
+        this.preferredPopoverHeight = POPOVER_HEIGHT;
     }
     update(prayerTimes) {
         this.latestPrayerTimes = prayerTimes;
@@ -23,8 +33,46 @@ class MenuBarManager {
         if (!this.tray) {
             return;
         }
+        this.refreshTrayDisplay();
+        this.ensureRefreshTimer();
+    }
+    hidePopover() {
+        if (this.popoverWindow?.isVisible()) {
+            this.popoverWindow.hide();
+        }
+    }
+    resizePopover(contentHeight) {
+        const desiredHeight = Math.max(MIN_POPOVER_HEIGHT, Math.ceil(contentHeight) + POPOVER_RESIZE_PADDING);
+        if (Math.abs(desiredHeight - this.preferredPopoverHeight) < 2) {
+            return;
+        }
+        this.preferredPopoverHeight = desiredHeight;
+        if (!this.tray || !this.popoverWindow || this.popoverWindow.isDestroyed()) {
+            return;
+        }
+        this.positionPopover(this.popoverWindow, this.tray.getBounds());
+    }
+    destroy() {
+        if (this.refreshTimer) {
+            clearInterval(this.refreshTimer);
+            this.refreshTimer = null;
+        }
+        this.tray?.destroy();
+        this.tray = null;
+        this.contextMenu = null;
+        this.latestPrayerTimes = null;
+        this.hidePopover();
+        this.popoverWindow?.destroy();
+        this.popoverWindow = null;
+        this.lastPopoverHtml = null;
+    }
+    refreshTrayDisplay() {
+        if (!this.tray || !this.latestPrayerTimes) {
+            return;
+        }
         const reference = new Date();
-        const nextPrayer = shared_1.PrayerTimeCalculator.getNextPrayerTime(prayerTimes.prayers, reference);
+        const visiblePrayers = this.getMenuPrayers(this.latestPrayerTimes.prayers);
+        const nextPrayer = shared_1.PrayerTimeCalculator.getNextPrayerTime(visiblePrayers, reference);
         const remainingLabel = nextPrayer
             ? this.formatTimeRemaining(shared_1.PrayerTimeCalculator.getTimeUntilPrayer(nextPrayer, reference))
             : null;
@@ -32,31 +80,25 @@ class MenuBarManager {
             this.tray.setToolTip(`Next: ${nextPrayer.name} at ${nextPrayer.time} (${remainingLabel})`);
         }
         else {
-            this.tray.setToolTip('Prayer Time');
+            this.tray.setToolTip('Salah Time');
         }
         if (process.platform === 'darwin') {
-            const title = nextPrayer && remainingLabel ? `${nextPrayer.name} ${remainingLabel}` : 'Prayer Time';
+            const title = nextPrayer && remainingLabel ? `${nextPrayer.name} ${remainingLabel}` : 'Salah Time';
             this.tray.setTitle(title);
         }
-        const popoverHtml = this.buildPopoverHtml(prayerTimes, reference, nextPrayer ?? null, remainingLabel);
+        const popoverHtml = this.buildPopoverHtml(this.latestPrayerTimes, reference, nextPrayer ?? null, remainingLabel);
         this.lastPopoverHtml = popoverHtml;
         if (this.popoverWindow) {
             this.loadPopoverHtml(popoverHtml);
         }
     }
-    hidePopover() {
-        if (this.popoverWindow?.isVisible()) {
-            this.popoverWindow.hide();
+    ensureRefreshTimer() {
+        if (this.refreshTimer) {
+            return;
         }
-    }
-    destroy() {
-        this.tray?.destroy();
-        this.tray = null;
-        this.latestPrayerTimes = null;
-        this.hidePopover();
-        this.popoverWindow?.destroy();
-        this.popoverWindow = null;
-        this.lastPopoverHtml = null;
+        this.refreshTimer = setInterval(() => {
+            this.refreshTrayDisplay();
+        }, TRAY_REFRESH_INTERVAL_MS);
     }
     initializeTray() {
         const icon = electron_1.nativeImage.createEmpty();
@@ -66,8 +108,9 @@ class MenuBarManager {
         this.tray.on('click', (_event, bounds) => {
             this.togglePopover(bounds);
         });
-        this.tray.on('right-click', (_event, bounds) => {
-            this.togglePopover(bounds);
+        this.tray.on('right-click', () => {
+            this.hidePopover();
+            this.showContextMenu();
         });
         this.tray.on('mouse-leave', () => {
             if (!this.popoverWindow?.isFocused()) {
@@ -78,13 +121,35 @@ class MenuBarManager {
             this.update(this.latestPrayerTimes);
         }
     }
+    showContextMenu() {
+        if (!this.tray) {
+            return;
+        }
+        if (!this.contextMenu) {
+            this.contextMenu = electron_1.Menu.buildFromTemplate([
+                {
+                    label: 'Show App',
+                    click: () => {
+                        this.options.onShowApp?.();
+                    },
+                },
+                {
+                    label: 'Quit',
+                    click: () => {
+                        electron_1.app.quit();
+                    },
+                },
+            ]);
+        }
+        this.tray.popUpContextMenu(this.contextMenu);
+    }
     ensurePopoverWindow() {
         if (this.popoverWindow) {
             return this.popoverWindow;
         }
         this.popoverWindow = new electron_1.BrowserWindow({
-            width: 320,
-            height: 370,
+            width: POPOVER_WIDTH,
+            height: POPOVER_HEIGHT,
             show: false,
             frame: false,
             resizable: false,
@@ -126,19 +191,23 @@ class MenuBarManager {
         window.focus();
     }
     positionPopover(window, trayBounds) {
-        const windowBounds = window.getBounds();
         const targetDisplay = electron_1.screen.getDisplayNearestPoint({ x: trayBounds.x, y: trayBounds.y });
         const workArea = targetDisplay.workArea;
-        let x = Math.round(trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2);
+        const width = POPOVER_WIDTH;
+        const availableHeight = Math.max(240, workArea.height - POPOVER_MARGIN * 2);
+        const desiredHeight = Math.max(MIN_POPOVER_HEIGHT, this.preferredPopoverHeight);
+        const height = Math.min(desiredHeight, availableHeight);
+        let x = Math.round(trayBounds.x + trayBounds.width / 2 - width / 2);
         let y;
         if (process.platform === 'darwin') {
             y = Math.round(trayBounds.y + trayBounds.height + 4);
         }
         else {
-            y = Math.round(trayBounds.y - windowBounds.height - 4);
+            y = Math.round(trayBounds.y - height - 4);
         }
-        x = Math.min(Math.max(workArea.x, x), workArea.x + workArea.width - windowBounds.width);
-        y = Math.min(Math.max(workArea.y, y), workArea.y + workArea.height - windowBounds.height);
+        x = Math.min(Math.max(workArea.x + POPOVER_MARGIN, x), workArea.x + workArea.width - width - POPOVER_MARGIN);
+        y = Math.min(Math.max(workArea.y + POPOVER_MARGIN, y), workArea.y + workArea.height - height - POPOVER_MARGIN);
+        window.setBounds({ x, y, width, height }, false);
         window.setPosition(x, y, false);
     }
     loadPopoverHtml(html) {
@@ -149,7 +218,9 @@ class MenuBarManager {
         this.popoverWindow.loadURL(`data:text/html;base64,${encoded}`);
     }
     buildPopoverHtml(prayerTimes, reference, nextPrayer, remainingLabel) {
-        const schedule = prayerTimes.prayers.map((prayer) => {
+        const visiblePrayers = this.getMenuPrayers(prayerTimes.prayers);
+        const sunrisePrayer = prayerTimes.prayers.find((prayer) => prayer.name === 'Sunrise') ?? null;
+        const schedule = visiblePrayers.map((prayer) => {
             const isNext = nextPrayer?.name === prayer.name;
             const occurrence = shared_1.PrayerTimeCalculator.getOccurrenceForDate(prayer, reference);
             const diff = occurrence.getTime() - reference.getTime();
@@ -157,6 +228,9 @@ class MenuBarManager {
             const relative = this.formatRelativeLabel(diff, isNext, isPast, remainingLabel);
             const status = isNext ? 'Next' : isPast ? 'Completed' : 'Upcoming';
             const stateClass = isNext ? 'next' : isPast ? 'past' : 'upcoming';
+            const secondaryLine = prayer.name === 'Fajr' && sunrisePrayer
+                ? `<span class="pill-secondary">Sunrise ${sunrisePrayer.time}</span>`
+                : '';
             return `
         <div class="prayer-card ${stateClass}">
           <div class="prayer-pill">
@@ -167,6 +241,7 @@ class MenuBarManager {
             ${isNext
                 ? `<span class="pill-clock muted">${nextPrayer?.time}</span>`
                 : `<span class="pill-clock">${prayer.time}</span>`}
+            ${secondaryLine}
             <span class="pill-relative">${relative}</span>
           </div>
         </div>
@@ -196,6 +271,9 @@ class MenuBarManager {
     <style>
       :root { color-scheme: dark; }
       * { box-sizing: border-box; }
+      html {
+        height: 100%;
+      }
       body {
         margin: 0;
         padding: 0;
@@ -204,17 +282,31 @@ class MenuBarManager {
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         background: linear-gradient(160deg, #091421 0%, #14263a 55%, #0a1c2c 100%);
         color: #e2e8f0;
-        min-height: 100%;
+      }
+
+      .tray-viewport {
+        width: 100%;
+        height: 100%;
+        overflow-y: auto;
+        scrollbar-gutter: stable;
       }
 
       .tray-shell {
         width: 100%;
-        height: 100%;
         padding: 0.8rem 0.9rem;
         display: flex;
         flex-direction: column;
         gap: 0.65rem;
-        justify-content: space-between;
+        justify-content: flex-start;
+      }
+
+      .tray-viewport::-webkit-scrollbar {
+        width: 0.34rem;
+      }
+
+      .tray-viewport::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.35);
+        border-radius: 999px;
       }
 
       .head {
@@ -238,6 +330,8 @@ class MenuBarManager {
         border: 1px solid rgba(148, 163, 184, 0.2);
         display: grid;
         gap: 0.28rem;
+        justify-items: center;
+        text-align: center;
         box-shadow: 0 0.9rem 2rem rgba(8, 20, 31, 0.26);
       }
 
@@ -329,6 +423,12 @@ class MenuBarManager {
         font-weight: 600;
       }
 
+      .pill-secondary {
+        font-size: 0.54rem;
+        color: rgba(191, 219, 254, 0.72);
+        letter-spacing: 0.04em;
+      }
+
       .pill-clock.muted {
         color: rgba(226, 232, 240, 0.4);
       }
@@ -337,47 +437,6 @@ class MenuBarManager {
         font-size: 0.58rem;
         color: rgba(226, 232, 240, 0.7);
         letter-spacing: 0.04em;
-      }
-
-      .actions {
-        display: flex;
-        justify-content: space-between;
-        gap: 0.42rem;
-      }
-
-      .actions button {
-        flex: 1;
-        padding: 0.46rem 0.66rem;
-        border-radius: 999px;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-        background: rgba(13, 24, 35, 0.65);
-        color: rgba(226, 232, 240, 0.85);
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        cursor: pointer;
-        transition: transform 0.18s ease, border-color 0.18s ease;
-      }
-
-      .actions button.primary {
-        background: linear-gradient(135deg, #38bdf8 0%, #2563eb 90%);
-        border-color: rgba(37, 99, 235, 0.6);
-        color: #f8fafc;
-      }
-
-      .actions button.secondary {
-        border-color: rgba(148, 163, 184, 0.35);
-        background: rgba(15, 25, 38, 0.7);
-      }
-
-      .actions button:hover {
-        transform: translateY(-2px);
-        border-color: rgba(148, 163, 184, 0.45);
-      }
-
-      .actions button.primary:hover {
-        border-color: rgba(37, 99, 235, 0.8);
       }
 
       .muted {
@@ -394,20 +453,17 @@ class MenuBarManager {
     </style>
   </head>
   <body>
-    <div class="tray-shell">
-      <div class="head">
-        <span>${prayerTimes.date}</span>
-        <span>${prayerTimes.hijriDate ?? ''}</span>
-      </div>
-      ${nextBlock}
-      <div class="muted">Today's schedule</div>
-      <div class="schedule">
-        ${schedule.join('')}
-      </div>
-      <div class="actions">
-        <button class="primary" data-action="openApp">Open App</button>
-        <button class="secondary" data-action="manageNotifications">Notifications</button>
-        <button data-action="quitApp">Quit</button>
+    <div class="tray-viewport">
+      <div class="tray-shell">
+        <div class="head">
+          <span>${prayerTimes.date}</span>
+          <span>${prayerTimes.hijriDate ?? ''}</span>
+        </div>
+        ${nextBlock}
+        <div class="muted">Today's schedule</div>
+        <div class="schedule">
+          ${schedule.join('')}
+        </div>
       </div>
     </div>
     <script>
@@ -417,22 +473,54 @@ class MenuBarManager {
         }
       };
 
-      document.querySelectorAll('[data-action]').forEach((button) => {
-        button.addEventListener('click', (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          invokeAction(button.getAttribute('data-action'));
-        });
-      });
+      let lastRequestedHeight = 0;
+
+      const requestPopoverResize = () => {
+        const shell = document.querySelector('.tray-shell');
+        if (!shell || !window.tray || typeof window.tray.resizePopover !== 'function') {
+          return;
+        }
+
+        const shellRect = shell.getBoundingClientRect();
+        const nextHeight = Math.ceil(shellRect.height);
+        if (Math.abs(nextHeight - lastRequestedHeight) < 2) {
+          return;
+        }
+
+        lastRequestedHeight = nextHeight;
+        window.tray.resizePopover(nextHeight);
+      };
+
+      let resizeFrame = 0;
+      const queuePopoverResize = () => {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(requestPopoverResize);
+      };
 
       window.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') {
           invokeAction('hidePopover');
         }
       });
+
+      window.addEventListener('load', queuePopoverResize);
+      window.addEventListener('resize', queuePopoverResize);
+      queuePopoverResize();
+      setTimeout(queuePopoverResize, 60);
+
+      if ('ResizeObserver' in window) {
+        const shell = document.querySelector('.tray-shell');
+        if (shell) {
+          const observer = new ResizeObserver(() => queuePopoverResize());
+          observer.observe(shell);
+        }
+      }
     </script>
   </body>
 </html>`;
+    }
+    getMenuPrayers(prayers) {
+        return prayers.filter((prayer) => MENU_PRAYER_NAMES.includes(prayer.name));
     }
     formatRelativeLabel(diff, isNext, isPast, remainingLabel) {
         if (isNext) {
