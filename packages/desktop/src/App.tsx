@@ -1064,6 +1064,42 @@ function App() {
   const missedPrayerSummaryText =
     missedPrayerBreakdown.length > 0 ? missedPrayerBreakdown.join(' • ') : 'No missed prayers';
 
+  const getPrayerDescription = (name: string) => {
+    switch (name) {
+      case 'Fajr': return 'Dawn time in your area';
+      case 'Dhuhr': return 'Noon time in your area';
+      case 'Asr': return 'Afternoon time in your area';
+      case 'Maghrib': return 'Sunset time in your area';
+      case 'Isha': return 'Night time in your area';
+      default: return 'Prayer time in your area';
+    }
+  };
+
+  const getPrayerIcon = (name: string, isActive: boolean) => {
+    const color = isActive ? '#007AFF' : '#8E8E93';
+    switch (name) {
+      case 'Fajr':
+        return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v2M4.93 4.93l1.41 1.41M2 12h2M4.93 19.07l1.41-1.41M12 22v-2M17.66 19.07l-1.41-1.41M22 12h-2M17.66 4.93l-1.41 1.41"></path></svg>;
+      case 'Dhuhr':
+        return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>;
+      case 'Asr':
+        return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>;
+      case 'Maghrib':
+        return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>;
+      case 'Isha':
+        return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>;
+      default:
+        return null;
+    }
+  };
+
+  const countdownText = useMemo(() => {
+    if (!timeUntilNext) return '--:--';
+    if (timeUntilNext === 'Now') return '00:00';
+    if (timeUntilNext.includes('h')) return timeUntilNext;
+    return `00:${timeUntilNext.replace('m', '').padStart(2, '0')}`;
+  }, [timeUntilNext]);
+
   return (
     <div className="app">
       {showLocationOnboarding && (
@@ -1487,20 +1523,21 @@ function App() {
       <div className="shell">
         <header className="topbar">
           <div className="brand">
-            <div className="brand-mark">ST</div>
+            <div className="brand-mark">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 21h18"></path>
+                <path d="M7 21v-4"></path>
+                <path d="M17 21v-4"></path>
+                <path d="M10 21V10l2-2 2 2v11"></path>
+                <path d="M12 4V2"></path>
+              </svg>
+            </div>
             <div className="brand-copy">
-              <h1>Salah Time</h1>
+              <h1>Prayer Manager</h1>
               <p>{locationDetail ? `${locationSummary} • ${locationDetail}` : locationSummary}</p>
             </div>
           </div>
           <div className="top-buttons">
-            {notificationsEnabled ? (
-              <span className="status-pill success">Reminders on</span>
-            ) : (
-              <button className="status-pill ghost" onClick={handleManageNotifications}>
-                Enable reminders
-              </button>
-            )}
             <button
               className="status-pill ghost settings-button"
               onClick={() => {
@@ -1517,142 +1554,70 @@ function App() {
           {loading ? (
             <div className="state-card">Loading prayer times...</div>
           ) : prayerTimes ? (
-            <div className="dashboard-simple">
-              <section className="overview-card">
-                <div className="overview-grid">
-                  <div className="overview-block">
-                    <span className="overview-label">Current moment</span>
-                    <div className="overview-current">{currentTimeDisplay || '--:--'}</div>
-                    <div className="overview-date">{currentDateDisplay || prayerTimes.date}</div>
-                  </div>
+            <div className="dashboard-grid">
+              <div className="main-column">
+                <section className="greeting-section">
+                  <div className="current-date">{currentDateDisplay}</div>
+                  <h1>As-salaam Alaikum</h1>
+                </section>
 
-                  {nextPrayer && (
-                    <div className="overview-block overview-block-next">
-                      <span className="overview-label">Next prayer</span>
-                      <div className="overview-next-row">
-                        <span className="overview-next-name">{nextPrayer.name}</span>
-                        <span className="overview-next-time">{formatDisplayTime(nextPrayer.time, twentyFourHourClock)}</span>
+                {nextPrayer && (
+                  <section className="next-prayer-large-card">
+                    <div className="next-prayer-header">
+                      <div className="next-prayer-info">
+                        <span className="label">NEXT PRAYER</span>
+                        <h2 className="prayer-name">{nextPrayer.name}</h2>
+                        <span className="prayer-desc">{getPrayerDescription(nextPrayer.name)}</span>
                       </div>
-                      <div className="overview-next-countdown">
-                        {timeUntilNext === 'Now' ? 'Starting now' : `in ${timeUntilNext}`}
-                      </div>
-                      <div className="progress-track" aria-hidden="true">
-                        <div
-                          className="progress-bar"
-                          style={{ width: `${Math.min(100, Math.max(0, nextPrayerProgress))}%` }}
-                        />
-                      </div>
-                      <div className="progress-meta">
-                        <span className="progress-label">
-                          {previousPrayer
-                            ? `${previousPrayer.name} • ${formatDisplayTime(previousPrayer.time, twentyFourHourClock)}`
-                            : 'Awaiting previous prayer'}
-                        </span>
-                        <span className="progress-label">Toward {nextPrayer.name}</span>
+                      <div className="countdown-pill">
+                        <span className="time">{countdownText}</span>
+                        <span className="unit">min left</span>
                       </div>
                     </div>
-                  )}
-                </div>
-
-                <div className="overview-meta">
-                  {prayerTimes.hijriDate && <span className="chip subtle">{prayerTimes.hijriDate}</span>}
-                  <span className="chip subtle">{calculationMethodLabel}</span>
-                  {tahajjudSettings.enabled && <span className="chip subtle">{tahajjudStatusLabel}</span>}
-                  {totalMissedPrayers > 0 && <span className="chip warning">Missed {totalMissedPrayers}</span>}
-                </div>
-              </section>
-
-              {pendingPrayerCheck ? (
-                <div className="checkin-card">
-                  <div className="checkin-card-content">
-                    <span className="checkin-label">Prayer check-in</span>
-                    <strong className="checkin-title">Did you pray {pendingPrayerCheck.prayerName}?</strong>
-                    <p className="checkin-text">
-                      Started at {formatDisplayTime(pendingPrayerCheck.prayerTime, twentyFourHourClock)}
-                      {prayerCheckState.pending.length > 1
-                        ? ` • ${prayerCheckState.pending.length} reminders waiting`
-                        : ' • Answer this to keep the missed-prayer count accurate.'}
-                    </p>
-                  </div>
-                  <div className="checkin-actions">
-                    <button
-                      className="settings-secondary-button"
-                      onClick={() => {
-                        void handlePrayerCheckResponse(pendingPrayerCheck.id, 'yes');
-                      }}
-                    >
-                      Yes
+                    <button className="reminder-btn" onClick={handleManageNotifications}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                      Set Reminder
                     </button>
-                    <button
-                      className="settings-secondary-button danger"
-                      onClick={() => {
-                        void handlePrayerCheckResponse(pendingPrayerCheck.id, 'no');
-                      }}
-                    >
-                      No
-                    </button>
+                  </section>
+                )}
+
+                {pendingPrayerCheck && (
+                  <div className="checkin-card">
+                    <div className="checkin-card-content">
+                      <span className="checkin-label">Prayer check-in</span>
+                      <strong className="checkin-title">Did you pray {pendingPrayerCheck.prayerName}?</strong>
+                      <p className="checkin-text">
+                        Started at {formatDisplayTime(pendingPrayerCheck.prayerTime, twentyFourHourClock)}
+                      </p>
+                    </div>
+                    <div className="checkin-actions">
+                      <button className="settings-secondary-button" onClick={() => void handlePrayerCheckResponse(pendingPrayerCheck.id, 'yes')}>Yes</button>
+                      <button className="settings-secondary-button danger" onClick={() => void handlePrayerCheckResponse(pendingPrayerCheck.id, 'no')}>No</button>
+                    </div>
                   </div>
-                </div>
-              ) : totalMissedPrayers > 0 ? (
-                <div className="checkin-card checkin-card-muted">
-                  <div className="checkin-card-content">
-                    <span className="checkin-label">Missed prayers</span>
-                    <strong className="checkin-title">{totalMissedPrayers} recorded</strong>
-                    <p className="checkin-text">{missedPrayerSummaryText}</p>
-                  </div>
-                </div>
-              ) : null}
+                )}
+              </div>
 
-              <section className="schedule-panel schedule-panel-simple">
-                <div className="panel-heading">
-                  <h2>Today's Schedule</h2>
-                </div>
-                <div className="timeline-list">
-                  {visiblePrayers.map((prayer) => {
-                    const now = new Date();
-                    const isNext = nextPrayer?.name === prayer.name;
-                    const todayOccurrence = PrayerTimeCalculator.getOccurrenceForDate(prayer, now);
-                    const isPast = !isNext && todayOccurrence.getTime() < now.getTime();
-                    const statusClass = isNext ? 'next' : isPast ? 'past' : 'upcoming';
-                    const statusText = isNext ? 'Next' : isPast ? 'Completed' : 'Upcoming';
-                    const sunriseLabel =
-                      prayer.name === 'Fajr' && sunrisePrayer
-                        ? `Sunrise ${formatDisplayTime(sunrisePrayer.time, twentyFourHourClock)}`
-                        : null;
-
-                    let relativeLabel = '';
-                    if (isNext) {
-                      relativeLabel = timeUntilNext === 'Now' ? 'Starting now' : `in ${timeUntilNext}`;
-                    } else if (isPast) {
-                      const diff = now.getTime() - todayOccurrence.getTime();
-                      const formatted = formatTimeRemaining(diff);
-                      relativeLabel = formatted === 'Now' ? 'Moments ago' : `${formatted} ago`;
-                    } else {
-                      const diff = todayOccurrence.getTime() - now.getTime();
-                      const formatted = formatTimeRemaining(diff);
-                      relativeLabel = formatted === 'Now' ? 'Moments away' : `in ${formatted}`;
-                    }
-
-                    return (
-                      <div key={prayer.name} className={`timeline-card ${statusClass}`}>
-                        <div className="timeline-content">
-                          <div className="timeline-heading">
-                            <div className="timeline-title-group">
-                              <span className="timeline-name">{prayer.name}</span>
-                              {sunriseLabel ? <span className="timeline-subtext">{sunriseLabel}</span> : null}
-                            </div>
-                            <span className="timeline-time">{formatDisplayTime(prayer.time, twentyFourHourClock)}</span>
+              <div className="side-column">
+                <section className="schedule-section">
+                  <h3>Daily Schedule</h3>
+                  <div className="schedule-list">
+                    {visiblePrayers.map((prayer) => {
+                      const isNext = nextPrayer?.name === prayer.name;
+                      const itemClass = `schedule-item${isNext ? ' active' : ''}`;
+                      return (
+                        <div key={prayer.name} className={itemClass}>
+                          <div className="prayer-info">
+                            <span className="prayer-icon">{getPrayerIcon(prayer.name, isNext)}</span>
+                            <span className="prayer-name">{prayer.name}</span>
                           </div>
-                          <div className="timeline-meta">
-                            <span className={`timeline-status ${statusClass}`}>{statusText}</span>
-                            <span className="timeline-relative">{relativeLabel}</span>
-                          </div>
+                          <span className="prayer-time">{formatDisplayTime(prayer.time, twentyFourHourClock)}</span>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
+                      );
+                    })}
+                  </div>
+                </section>
+              </div>
             </div>
           ) : (
             <div className={`state-card${activeLocation ? ' error' : ''}`}>
@@ -1666,3 +1631,4 @@ function App() {
 }
 
 export default App;
+

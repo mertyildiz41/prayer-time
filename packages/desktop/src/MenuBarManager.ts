@@ -7,11 +7,11 @@ interface MenuBarManagerOptions {
 }
 
 const TRAY_REFRESH_INTERVAL_MS = 60 * 1000;
-const POPOVER_WIDTH = 360;
-const POPOVER_HEIGHT = 500;
-const MIN_POPOVER_HEIGHT = 220;
+const POPOVER_WIDTH = 380;
+const POPOVER_HEIGHT = 600;
+const MIN_POPOVER_HEIGHT = 300;
 const POPOVER_MARGIN = 12;
-const POPOVER_RESIZE_PADDING = 24;
+const POPOVER_RESIZE_PADDING = 32;
 const MENU_PRAYER_NAMES = ['Fajr', 'Dhuhr', 'Asr', 'Maghrib', 'Isha'] as const;
 
 export class MenuBarManager {
@@ -183,7 +183,7 @@ export class MenuBarManager {
       movable: false,
       fullscreenable: false,
       skipTaskbar: true,
-      backgroundColor: '#101a27',
+      backgroundColor: '#0F1115',
       alwaysOnTop: true,
       focusable: true,
       webPreferences: {
@@ -267,258 +267,373 @@ export class MenuBarManager {
     remainingLabel: string | null
   ): string {
     const visiblePrayers = this.getMenuPrayers(prayerTimes.prayers);
-    const sunrisePrayer = prayerTimes.prayers.find((prayer) => prayer.name === 'Sunrise') ?? null;
+    const formattedDate = reference.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+    });
 
-    const schedule = visiblePrayers.map((prayer) => {
+    const getPrayerIcon = (name: string, isActive: boolean) => {
+      const color = isActive ? '#007AFF' : '#8E8E93';
+      switch (name) {
+        case 'Fajr':
+          return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2M4.93 4.93l1.41 1.41M2 12h2M4.93 19.07l1.41-1.41M12 22v-2M17.66 19.07l-1.41-1.41M22 12h-2M17.66 4.93l-1.41 1.41"></path></svg>`;
+        case 'Dhuhr':
+          return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
+        case 'Asr':
+          return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`;
+        case 'Maghrib':
+          return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${isActive ? '#007AFF' : '#8E8E93'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>`;
+        case 'Isha':
+          return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>`;
+        default:
+          return '';
+      }
+    };
+
+    const getPrayerDescription = (name: string) => {
+      switch (name) {
+        case 'Fajr': return 'Dawn time in your area';
+        case 'Dhuhr': return 'Noon time in your area';
+        case 'Asr': return 'Afternoon time in your area';
+        case 'Maghrib': return 'Sunset time in your area';
+        case 'Isha': return 'Night time in your area';
+        default: return 'Prayer time in your area';
+      }
+    };
+
+    const scheduleItems = visiblePrayers.map((prayer) => {
       const isNext = nextPrayer?.name === prayer.name;
-      const occurrence = PrayerTimeCalculator.getOccurrenceForDate(prayer, reference);
-      const diff = occurrence.getTime() - reference.getTime();
-      const isPast = diff < 0 && !isNext;
-      const relative = this.formatRelativeLabel(diff, isNext, isPast, remainingLabel);
-      const status = isNext ? 'Next' : isPast ? 'Completed' : 'Upcoming';
-      const stateClass = isNext ? 'next' : isPast ? 'past' : 'upcoming';
-      const secondaryLine =
-        prayer.name === 'Fajr' && sunrisePrayer
-          ? `<span class="pill-secondary">Sunrise ${sunrisePrayer.time}</span>`
-          : '';
-
+      const icon = getPrayerIcon(prayer.name, isNext);
+      const itemClass = isNext ? 'schedule-item active' : 'schedule-item';
+      
       return `
-        <div class="prayer-card ${stateClass}">
-          <div class="prayer-pill">
-            <span class="pill-name">${prayer.name}</span>
-            <span class="pill-status">${status}</span>
+        <div class="${itemClass}">
+          <div class="prayer-info">
+            <span class="prayer-icon">${icon}</span>
+            <span class="prayer-name">${prayer.name}</span>
           </div>
-          <div class="pill-time">
-            ${isNext
-              ? `<span class="pill-clock muted">${nextPrayer?.time}</span>`
-              : `<span class="pill-clock">${prayer.time}</span>`}
-            ${secondaryLine}
-            <span class="pill-relative">${relative}</span>
-          </div>
+          <span class="prayer-time">${prayer.time}</span>
         </div>
       `;
     });
 
-    const nextBlock = nextPrayer
-      ? `
-        <div class="next-card">
-          <div class="next-label">Next Prayer</div>
-          <div class="next-name">${nextPrayer.name}</div>
-          <div class="next-time">${nextPrayer.time}</div>
-          <div class="next-countdown">${
-            remainingLabel === 'Now' ? 'Starting now' : remainingLabel ? `in ${remainingLabel}` : ''
-          }</div>
-        </div>
-      `
-      : `
-        <div class="next-card idle">
-          <div class="next-label">All Set</div>
-          <div class="next-name">All prayers completed</div>
-        </div>
-      `;
+    const countdownText = remainingLabel ? (remainingLabel === 'Now' ? '00:00' : remainingLabel.includes('h') ? remainingLabel : `00:${remainingLabel.replace('m', '').padStart(2, '0')}`) : '--:--';
 
     return `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
-    <title>Prayer Menu</title>
+    <title>Prayer Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-      :root { color-scheme: dark; }
-      * { box-sizing: border-box; }
-      html {
-        height: 100%;
+      :root {
+        --bg-color: #0F1115;
+        --card-bg: #1A1C20;
+        --text-primary: #FFFFFF;
+        --text-secondary: #8E8E93;
+        --accent-blue: #007AFF;
+        --accent-blue-soft: rgba(0, 122, 255, 0.1);
+        --glow-blue: rgba(0, 122, 255, 0.3);
       }
+      
+      * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+      
       body {
         margin: 0;
         padding: 0;
-        height: 100%;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-primary);
         overflow: hidden;
-        font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        background: linear-gradient(160deg, #091421 0%, #14263a 55%, #0a1c2c 100%);
-        color: #e2e8f0;
       }
 
-      .tray-viewport {
+      .container {
         width: 100%;
-        height: 100%;
-        overflow-y: auto;
-        scrollbar-gutter: stable;
-      }
-
-      .tray-shell {
-        width: 100%;
-        padding: 0.8rem 0.9rem;
         display: flex;
         flex-direction: column;
-        gap: 0.65rem;
-        justify-content: flex-start;
+        padding: 20px;
+        gap: 24px;
       }
 
-      .tray-viewport::-webkit-scrollbar {
-        width: 0.34rem;
-      }
-
-      .tray-viewport::-webkit-scrollbar-thumb {
-        background: rgba(148, 163, 184, 0.35);
-        border-radius: 999px;
-      }
-
-      .head {
+      header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        font-size: 0.62rem;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: rgba(226, 232, 240, 0.58);
       }
 
-      .head span:nth-child(2) {
-        color: rgba(226, 232, 240, 0.45);
-      }
-
-      .next-card {
-        padding: 0.7rem 0.78rem;
-        border-radius: 0.78rem;
-        background: linear-gradient(135deg, rgba(56, 189, 248, 0.22) 0%, rgba(37, 99, 235, 0.3) 100%);
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        display: grid;
-        gap: 0.28rem;
-        justify-items: center;
-        text-align: center;
-        box-shadow: 0 0.9rem 2rem rgba(8, 20, 31, 0.26);
-      }
-
-      .next-card.idle {
-        background: rgba(13, 24, 35, 0.75);
-      }
-
-      .next-label {
-        font-size: 0.58rem;
-        letter-spacing: 0.13em;
-        text-transform: uppercase;
-        color: rgba(226, 232, 240, 0.64);
-      }
-
-      .next-name {
-        font-size: 1rem;
-        font-weight: 600;
-        letter-spacing: 0.05em;
-      }
-
-      .next-time {
-        font-size: 1.32rem;
-        font-weight: 600;
-      }
-
-      .next-countdown {
-        font-size: 0.7rem;
-        color: rgba(226, 232, 240, 0.78);
-        letter-spacing: 0.03em;
-      }
-
-      .schedule {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.45rem;
-      }
-
-      .prayer-card {
-        padding: 0.55rem 0.5rem;
-        border-radius: 0.68rem;
-        border: 1px solid rgba(148, 163, 184, 0.16);
-        background: rgba(12, 21, 34, 0.68);
-        box-shadow: 0 0.65rem 1.3rem rgba(5, 12, 20, 0.22);
-        display: grid;
-        grid-template-columns: 1fr auto;
+      .app-info {
+        display: flex;
         align-items: center;
-        gap: 0.38rem;
+        gap: 10px;
       }
 
-      .prayer-card.next {
-        border-color: rgba(96, 165, 250, 0.42);
-        background: linear-gradient(135deg, rgba(96, 165, 250, 0.22), rgba(37, 99, 235, 0.3));
-      }
-
-      .prayer-card.past {
-        opacity: 0.7;
-      }
-
-      .prayer-pill {
+      .app-icon {
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(135deg, #2C3E50 0%, #000000 100%);
+        border-radius: 50%;
         display: flex;
-        flex-direction: column;
-        gap: 0.18rem;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255,255,255,0.1);
       }
 
-      .pill-name {
-        font-size: 0.65rem;
+      .app-title {
         font-weight: 600;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
+        font-size: 16px;
       }
 
-      .pill-status {
-        font-size: 0.52rem;
-        letter-spacing: 0.11em;
-        text-transform: uppercase;
-        color: rgba(226, 232, 240, 0.6);
+      .close-btn {
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.2s;
       }
 
-      .pill-time {
+      .close-btn:hover { color: var(--text-primary); }
+
+      .greeting-section .date {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-bottom: 4px;
+      }
+
+      .greeting-section h1 {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.5px;
+      }
+
+      .next-prayer-card {
+        background-color: var(--card-bg);
+        border-radius: 16px;
+        padding: 20px;
         display: flex;
         flex-direction: column;
-        align-items: flex-end;
-        gap: 0.18rem;
+        gap: 20px;
+        border: 1px solid rgba(255,255,255,0.05);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+      }
+
+      .next-prayer-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .next-prayer-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .next-prayer-info .label {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--accent-blue);
+        letter-spacing: 0.5px;
+      }
+
+      .next-prayer-info .prayer-name {
+        font-size: 32px;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .next-prayer-info .prayer-desc {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      .countdown-pill {
+        background-color: rgba(255,255,255,0.05);
+        padding: 8px 12px;
+        border-radius: 10px;
+        text-align: center;
+        min-width: 80px;
+      }
+
+      .countdown-pill .time {
+        display: block;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .countdown-pill .unit {
+        display: block;
+        font-size: 10px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+
+      .reminder-btn {
+        background-color: var(--accent-blue);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        padding: 12px;
+        font-size: 15px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: transform 0.1s, background-color 0.2s;
+      }
+
+      .reminder-btn:hover { background-color: #0066D6; }
+      .reminder-btn:active { transform: scale(0.98); }
+
+      .schedule-section h3 {
+        font-size: 15px;
+        font-weight: 600;
+        margin: 0 0 16px 0;
+      }
+
+      .schedule-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .schedule-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px;
+        border-radius: 12px;
+        transition: background-color 0.2s;
+        border: 1px solid transparent;
+      }
+
+      .schedule-item.active {
+        background-color: var(--accent-blue-soft);
+        border: 1px solid rgba(0, 122, 255, 0.2);
+        box-shadow: 0 0 15px var(--glow-blue);
+      }
+
+      .schedule-item .prayer-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .schedule-item .prayer-name {
+        font-size: 15px;
+        font-weight: 500;
+      }
+
+      .schedule-item.active .prayer-name {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .schedule-item .prayer-time {
+        font-size: 15px;
+        color: var(--text-secondary);
         font-variant-numeric: tabular-nums;
       }
 
-      .pill-clock {
-        font-size: 0.82rem;
+      .schedule-item.active .prayer-time {
+        color: var(--accent-blue);
         font-weight: 600;
       }
 
-      .pill-secondary {
-        font-size: 0.54rem;
-        color: rgba(191, 219, 254, 0.72);
-        letter-spacing: 0.04em;
+      footer {
+        margin-top: 8px;
+        display: flex;
+        justify-content: center;
       }
 
-      .pill-clock.muted {
-        color: rgba(226, 232, 240, 0.4);
+      .calendar-link {
+        background: none;
+        border: none;
+        color: var(--accent-blue);
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 8px;
       }
 
-      .pill-relative {
-        font-size: 0.58rem;
-        color: rgba(226, 232, 240, 0.7);
-        letter-spacing: 0.04em;
-      }
+      .calendar-link:hover { text-decoration: underline; }
 
-      .muted {
-        font-size: 0.6rem;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: rgba(226, 232, 240, 0.5);
-      }
-
-      a {
-        color: inherit;
-        text-decoration: none;
-      }
+      .tray-shell { width: 100%; }
     </style>
   </head>
   <body>
-    <div class="tray-viewport">
-      <div class="tray-shell">
-        <div class="head">
-          <span>${prayerTimes.date}</span>
-          <span>${prayerTimes.hijriDate ?? ''}</span>
-        </div>
-        ${nextBlock}
-        <div class="muted">Today's schedule</div>
-        <div class="schedule">
-          ${schedule.join('')}
-        </div>
+    <div class="tray-shell">
+      <div class="container">
+        <header>
+          <div class="app-info">
+            <div class="app-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 21h18"></path>
+                <path d="M7 21v-4"></path>
+                <path d="M17 21v-4"></path>
+                <path d="M10 21V10l2-2 2 2v11"></path>
+                <path d="M12 4V2"></path>
+              </svg>
+            </div>
+            <span class="app-title">Prayer Manager</span>
+          </div>
+          <button class="close-btn" onclick="invokeAction('hidePopover')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </header>
+
+        <main>
+          <div class="greeting-section">
+            <div class="date">${formattedDate}</div>
+            <h1>As-salaam Alaikum</h1>
+          </div>
+
+          <div class="next-prayer-card">
+            <div class="next-prayer-header">
+              <div class="next-prayer-info">
+                <span class="label">NEXT PRAYER</span>
+                <h2 class="prayer-name">${nextPrayer?.name ?? 'All Done'}</h2>
+                <span class="prayer-desc">${getPrayerDescription(nextPrayer?.name ?? '')}</span>
+              </div>
+              <div class="countdown-pill">
+                <span class="time">${countdownText}</span>
+                <span class="unit">min left</span>
+              </div>
+            </div>
+            <button class="reminder-btn" onclick="invokeAction('manageNotifications')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              Set Reminder
+            </button>
+          </div>
+
+          <section class="schedule-section">
+            <h3>Daily Schedule</h3>
+            <div class="schedule-list">
+              ${scheduleItems.join('')}
+            </div>
+          </section>
+
+          <footer>
+            <button class="calendar-link" onclick="invokeAction('openApp')">
+              View Monthly Calendar
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+          </footer>
+        </main>
       </div>
     </div>
     <script>
